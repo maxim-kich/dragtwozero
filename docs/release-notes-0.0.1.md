@@ -14,7 +14,9 @@ Drag text and links between Mac apps. Hold a shortcut, pick a block, and drop it
 
 ## Requirements and limitations
 
-Apple Silicon Mac. The app targets macOS 13+; final tested macOS and app/browser versions are pending. Liquid Glass requires macOS 26.
+Apple Silicon Mac. The installation minimum is macOS 13, while official support focuses only on the latest major macOS release after validation. Older versions may work but are unsupported. Liquid Glass requires macOS 26 or later.
+
+This candidate was tested on macOS 26.4.1. macOS 27 validation remains pending; do not describe latest-release support as verified until it passes. Record the final tested app/browser versions before publication.
 
 This is an alpha. Compatibility depends on the source and destination apps' Accessibility support. Google Docs canvas targeting is disabled. See the [usage guide](usage.md#compatibility-and-limitations) for current limitations.
 

@@ -70,6 +70,9 @@ func marqueeCandidates(root: AXUIElement, rect: CGRect, adapters: [SourceAdapter
         guard !shouldStop(), visited <= 2000, depth < 40 else { complete = false; return }
         guard let role = attribute(node, kAXRoleAttribute) as? String else { complete = false; return }
         guard !["AXTextArea", "AXTextField", "AXSecureTextField"].contains(role) else { return }
+        // Images are known unsupported source items, not an incomplete text
+        // scan. Do not query an image provider's children or include its label.
+        if role == "AXImage" { return }
         if let frame = bounds(node), !selectionTouches(rect, frame) { return }
         if ["AXStaticText", "AXInlineTextBox", "AXLink", "AXHeading", "AXParagraph", "AXListItem"].contains(role),
            let candidate = sourceCandidate(at: node, adapters: adapters, shouldStop: shouldStop) {

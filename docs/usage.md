@@ -38,6 +38,8 @@ Both features are in **Settings → General → Experimental** and are off by de
 
 **Multi-select:** hold the shortcut and drag from empty space across blocks. Release the shortcut while still pressing the mouse or trackpad to drag the group. If you release the mouse first, keep holding the shortcut and click a highlighted block or the hint to start dragging. Releasing the shortcut before starting that drag clears the group.
 
+Images are skipped while supported text and links remain in the group. A selection containing only images has nothing to capture. Unreadable or changed text still cancels safely.
+
 **Drag selected text:** select a passage natively, hold the shortcut, and hover the selection. Click any highlighted line to drag the entire selection. This requires the source app to expose the selection and its visual bounds through Accessibility. An unreadable selection is rejected rather than expanded to a larger paragraph.
 
 ## Clipboard and privacy

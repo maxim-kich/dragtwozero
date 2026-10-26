@@ -1,0 +1,23 @@
+name: Feature proposal
+description: Discuss direction before implementing a feature
+title: "Proposal: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem should this solve?
+      description: Describe the task and why current behavior is insufficient.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Suggested scope and alternatives
+      description: Keep the proposal small. An issue is not implementation approval.
+  - type: checkboxes
+    id: agreement
+    attributes:
+      label: Review expectations
+      options:
+        - label: I understand this is a solo-maintained project and will wait for scope agreement before substantial implementation.
+          required: true

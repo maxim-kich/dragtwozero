@@ -1,0 +1,35 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build-and-test:
+    name: Build and test (Apple Silicon)
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: |
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+          swift --version
+      - name: Repository hygiene
+        run: python3 scripts/check-repository.py
+      - name: Test
+        run: swift test
+      - name: Build local app
+        env:
+          DRAGTWOZERO_SIGN_IDENTITY: "-"
+        run: ./scripts/build-app.sh
+      - name: Verify bundle
+        run: ./scripts/verify-build.sh

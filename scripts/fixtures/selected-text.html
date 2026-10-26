@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Drag selection test</title>
+<style>
+  body { font: 24px/1.6 system-ui; padding: 50px; background: white; color: #222; }
+  p { width: 510px; }
+  textarea { width: 510px; height: 120px; font: 20px system-ui; }
+</style>
+<h1>Drag selection test</h1>
+<p id="source">Unselected prefix. Select this <strong>passage</strong> with <a href="https://example.test">emoji 🐈</a> and wrapped text across several lines. Unselected suffix.</p>
+<textarea aria-label="Synthetic destination">Destination: </textarea>
+<script>
+  function selectTestPassage() {
+  document.body.tabIndex = -1;
+  document.body.focus();
+  const walker = document.createTreeWalker(document.querySelector('#source'), NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  let offset = 0;
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const end = offset + node.length;
+    if (offset <= 19 && 19 < end) range.setStart(node, 19 - offset);
+    if (offset < 89 && 89 <= end) { range.setEnd(node, 89 - offset); break; }
+    offset = end;
+  }
+  getSelection().removeAllRanges();
+  getSelection().addRange(range);
+  }
+  selectTestPassage();
+</script>

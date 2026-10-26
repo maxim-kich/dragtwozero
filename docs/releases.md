@@ -7,6 +7,12 @@ Sole release maintainer: @maxim-kich.
 
 0.0.1 is being prepared locally as **Drag 2.0 (Alpha)**. Keep the app in alpha until testing confirms it works reliably; moving to beta requires a separate readiness decision. A local DMG design preview and an explicit Developer ID signing/notarization workflow are available. Packaging does not publish a release or replace the installed app. Native acceptance and clean-machine installation checks remain release gates.
 
+## macOS support policy
+
+Official support focuses only on the latest major macOS release after native validation. Keep the installation minimum at macOS 13 on Apple Silicon: older versions may work, but are unsupported and have no guaranteed compatibility or fixes. Older-version testing is optional and does not block release under this policy. Retain runtime availability guards and fallbacks.
+
+The current candidate was tested on macOS 26.4.1. Apple's [current macOS list](https://support.apple.com/en-us/109033) identifies macOS 27 as the latest major release; validation there remains required before claiming latest-release support. Recheck that list when preparing a release, and name the actual tested versions in its notes. The support policy must not silently turn an untested future major version into a compatibility promise.
+
 ## Hosting contract
 
 Use GitHub Releases as the download source. The website and native updater should point to the same release assets, not separately maintained copies.

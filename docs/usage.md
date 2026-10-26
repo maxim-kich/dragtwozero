@@ -50,7 +50,8 @@ Captured content is processed locally. Optional Screen Recording permission is u
 
 ## Compatibility and limitations
 
-- Apple Silicon only. The deployment target is macOS 13; older-system release QA is pending. Liquid Glass requires macOS 26.
+- Apple Silicon only, installable on macOS 13+. Official support is limited to the latest major macOS release once validated. Older versions may work but are unsupported; compatibility is not guaranteed. Liquid Glass requires macOS 26 or later.
+- This candidate was tested on macOS 26.4.1; macOS 27 validation is pending. The installation minimum does not mean every installable OS version has been tested.
 - Capture and insertion depend on each app's Accessibility support. There is no complete verified app/browser compatibility matrix yet.
 - Google Docs canvas targeting is disabled. Table drops require a writable cell and replace that cell's value.
 - Chrome/Chromium paste compatibility remains a release-validation item. A posted Paste command alone does not prove insertion; check the field before retrying an uncertain transfer.

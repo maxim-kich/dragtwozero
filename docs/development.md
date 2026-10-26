@@ -11,7 +11,9 @@ swift test
 open 'dist/Drag 2.0 (Alpha).app' --args --settings
 ```
 
-The runtime deployment target is macOS 13; Liquid Glass requires macOS 26. Older macOS fallback behavior still needs release QA. Intel is not a supported target.
+The runtime deployment target remains macOS 13 so older Apple Silicon Macs can install the app; Liquid Glass requires macOS 26. Official support focuses only on the latest major macOS release after validation. Older releases are unsupported, best-effort compatibility, and their native QA is optional rather than a release gate. Keep availability guards and fallbacks; do not raise the deployment target merely to narrow the support policy. Intel is not a supported target.
+
+The current candidate was tested on macOS 26.4.1. macOS 27 is the current major release and still needs validation before claiming latest-release support. See the [release support policy](releases.md#macos-support-policy).
 
 `VERSION` supplies the displayed release version. The package/target/executable remains DragTwoZero; the app bundle and display name are Drag 2.0 (Alpha) during the alpha stage. The historical bundle ID is retained to preserve Accessibility permissions and preferences.
 

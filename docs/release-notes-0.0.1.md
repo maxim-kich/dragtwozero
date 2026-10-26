@@ -22,7 +22,7 @@ This is an alpha. Compatibility depends on the source and destination apps' Acce
 
 Download the **macOS arm64 ZIP attached to the release**, extract it, and move **Drag 2.0 (Alpha).app** to Applications. Open it and follow the Accessibility setup. GitHub's automatic **Source code** archives are for building the app, not installation.
 
-The release includes `SHA256SUMS.txt`. To verify the ZIP, place both downloads in the same folder and run `shasum -a 256 -c SHA256SUMS.txt` there.
+The release includes `SHA256SUMS.txt`. To verify the ZIP, place both downloads in the same folder and run `shasum -a 256 -c SHA256SUMS.txt --ignore-missing` there. The ZIP must report `OK`; the option skips checks for the optional DMG and appcast when you have not downloaded them.
 
 For future versions, use **Settings → About → Check for Updates → Download & Install → Restart**. Download/preparation and restart require separate confirmations. Finish active transfers and use or clear Buffer before restarting. Builds from before the integrated updater need one manual installation of an updater-enabled version.
 

@@ -1,0 +1,37 @@
+# Drag 2.0 (Alpha) 0.0.1
+
+Maintainer draft. This release is not published. Complete final acceptance, record the results below, and remove this draft notice before using these notes on GitHub. Publish as an ordinary GitHub release; Alpha is the app name.
+
+Drag text and links between Mac apps. Hold a shortcut, pick a block, and drop it into a supported input at its existing caret.
+
+## Included
+
+- Text and link dragging with a configurable shortcut, appearance, haptics, and formatting.
+- Optional single-item Buffer for carrying content between apps.
+- Experimental Multi-select and Drag selected text, off by default.
+- Six-step first-launch introduction with Accessibility setup, shortcut selection, optional Buffer, and notification choices.
+- In-app updates with signed feeds and archives, optional notifications, and separate download and restart confirmations.
+
+## Requirements and limitations
+
+Apple Silicon Mac. The app targets macOS 13+; final tested macOS and app/browser versions are pending. Liquid Glass requires macOS 26.
+
+This is an alpha. Compatibility depends on the source and destination apps' Accessibility support. Google Docs canvas targeting is disabled. See the [usage guide](usage.md#compatibility-and-limitations) for current limitations.
+
+## Install
+
+Download the **macOS arm64 ZIP attached to the release**, extract it, and move **Drag 2.0 (Alpha).app** to Applications. Open it and follow the Accessibility setup. GitHub's automatic **Source code** archives are for building the app, not installation.
+
+The release includes `SHA256SUMS.txt`. To verify the ZIP, place both downloads in the same folder and run `shasum -a 256 -c SHA256SUMS.txt` there.
+
+For future versions, use **Settings → About → Check for Updates → Download & Install → Restart**. Download/preparation and restart require separate confirmations. Finish active transfers and use or clear Buffer before restarting. Builds from before the integrated updater need one manual installation of an updater-enabled version.
+
+## Complete before publication
+
+- Record the final source commit and tested macOS/source/destination versions.
+- Record native acceptance, browser compatibility, fresh-permission and clean-install results; state any remaining limitations.
+- Verify the final attached ZIP, Developer ID signature, notarization ticket, and checksum.
+- Replace the relative usage-guide link above with its URL at the published release tag.
+- Review these notes against the final build and remove this section before publication.
+
+[Website](https://dragtwozero.com) · [Legal & Privacy](https://dragtwozero.com/legal#app-privacy)

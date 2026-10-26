@@ -35,7 +35,9 @@ enum SelectedTextFormatting {
                 }
             }
             let traits = font?.fontDescriptor.symbolicTraits ?? []
-            let bold = preserveStructure && traits.contains(.bold)
+            // Chromium can expose a weight flag and size without a font name.
+            let explicitBold = axFont?["AXFontBold"] as? Bool
+            let bold = preserveStructure && (explicitBold ?? traits.contains(.bold))
             let italic = preserveStructure && traits.contains(.italic)
             let content = (text as NSString).substring(with: range)
             if let last = runs.last, last.url == url, last.bold == bold, last.italic == italic {

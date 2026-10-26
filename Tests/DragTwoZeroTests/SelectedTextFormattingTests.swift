@@ -3,6 +3,17 @@ import XCTest
 @testable import DragTwoZero
 
 final class SelectedTextFormattingTests: XCTestCase {
+    func testExplicitAXBoldWithoutFontNameIsPreservedOnlyWithStructure() {
+        let key = NSAttributedString.Key(kAXFontTextAttribute.takeUnretainedValue() as String)
+        let text = NSAttributedString(string: " passage ", attributes: [key: ["AXFontBold": true, "AXFontSize": 24]])
+        XCTAssertEqual(SelectedTextFormatting.markdown(text.string, attributed: text, preserveStructure: true), " **passage** ")
+        XCTAssertEqual(SelectedTextFormatting.markdown(text.string, attributed: text, preserveStructure: false), " passage ")
+        let plain = NSAttributedString(string: "passage", attributes: [key: ["AXFontBold": false, "AXFontSize": 24]])
+        XCTAssertEqual(SelectedTextFormatting.markdown(plain.string, attributed: plain, preserveStructure: true), "passage")
+        let explicitRegular = NSAttributedString(string: "passage", attributes: [.font: NSFont.boldSystemFont(ofSize: 24), key: ["AXFontBold": false]])
+        XCTAssertEqual(SelectedTextFormatting.markdown(explicitRegular.string, attributed: explicitRegular, preserveStructure: true), "passage")
+    }
+
     func testAXSystemFontFaceDoesNotLoseBoldThroughFontSubstitution() {
         let text = NSAttributedString(string: "passage", attributes: [
             NSAttributedString.Key(kAXFontTextAttribute.takeUnretainedValue() as String): [

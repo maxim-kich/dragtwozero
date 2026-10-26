@@ -37,9 +37,40 @@ final class BrowserSelectionIntegrationTests: XCTestCase {
             RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
         }
         let owner = try XCTUnwrap(readyOwner)
+        // Inspect the provider independently of the capture formatter. Some
+        // Chromium builds expose bold but omit URL metadata from selected
+        // attributed text; blue/underlined text is not proof of a link URL.
+        let selected = try XCTUnwrap(attribute(owner, "AXSelectedTextMarkerRange"))
+        func readAttributed(_ name: String, _ input: CFTypeRef) -> NSAttributedString? {
+            var raw: CFTypeRef?
+            guard AXUIElementCopyParameterizedAttributeValue(owner, name as CFString, input, &raw) == .success else { return nil }
+            return raw as? NSAttributedString
+        }
+        let options = ["AXTextMarkerRange": selected, "AXSpellCheck": false] as CFDictionary
+        let raw = try XCTUnwrap(readAttributed("AXAttributedStringForTextMarkerRangeWithOptions", options)
+            ?? readAttributed("AXAttributedStringForTextMarkerRange", selected))
+        let plain = "Select this passage with emoji 🐈 and wrapped text across several line"
+        XCTAssertEqual(raw.string, plain)
+        let passage = (plain as NSString).range(of: "passage")
+        let attributes = raw.attributes(at: passage.location, effectiveRange: nil)
+        let font = attributes[NSAttributedString.Key(kAXFontTextAttribute.takeUnretainedValue() as String)] as? [String: Any]
+        let explicitBold = font?["AXFontBold"] as? Bool
+        let namedBold = (font?[kAXFontNameKey.takeUnretainedValue() as String] as? String)?.localizedCaseInsensitiveContains("bold") == true
+        let nativeBold = (attributes[.font] as? NSFont)?.fontDescriptor.symbolicTraits.contains(.bold) == true
+        let expectedPassage = (explicitBold ?? (namedBold || nativeBold)) ? "**passage**" : "passage"
+        let linkRange = (plain as NSString).range(of: "emoji 🐈")
+        let linkAttributes = raw.attributes(at: linkRange.location, effectiveRange: nil)
+        let rawLink = linkAttributes[.link] ?? linkAttributes[NSAttributedString.Key(kAXLinkTextAttribute.takeUnretainedValue() as String)]
+        let linkValue = rawLink.flatMap { value -> CFTypeRef? in
+            axElement(value as CFTypeRef).map { attribute($0, kAXURLAttribute) } ?? (value as CFTypeRef)
+        }
+        let linkURL = (linkValue as? URL) ?? (linkValue as? String).flatMap(URL.init(string:))
+        let supportedURL = linkURL.flatMap { ["http", "https"].contains($0.scheme?.lowercased() ?? "") ? $0:nil }
+        if let supportedURL { XCTAssertEqual(supportedURL.absoluteString, "https://example.test/") }
+        let expectedLink = supportedURL == nil ? "emoji 🐈" : "[emoji 🐈](https://example.test/)"
         let candidate = try XCTUnwrap(AccessibleSelectedTextAdapter().candidate(at: owner))
         XCTAssertNotNil(candidate.selectedTextMarkerRange)
-        XCTAssertEqual(candidate.payload.text, "Select this **passage** with [emoji 🐈](https://example.test/) and wrapped text across several line")
+        XCTAssertEqual(candidate.payload.text, "Select this \(expectedPassage) with \(expectedLink) and wrapped text across several line")
         let frames = try XCTUnwrap(candidate.textFrames)
         XCTAssertGreaterThan(frames.count, 1)
         XCTAssertGreaterThan(frames[0].minX, frames[1].minX)

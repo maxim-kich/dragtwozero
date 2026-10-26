@@ -42,6 +42,8 @@ Images are skipped while supported text and links remain in the group. A selecti
 
 **Drag selected text:** select a passage natively, hold the shortcut, and hover the selection. Click any highlighted line to drag the entire selection. This requires the source app to expose the selection and its visual bounds through Accessibility. An unreadable selection is rejected rather than expanded to a larger paragraph.
 
+Formatting also depends on the attributes the source exposes for that selection. Some browsers expose bold text but omit link destinations; the selected words remain plain text for those links. Drag does not infer a URL from color or underlining.
+
 ## Clipboard and privacy
 
 In **Settings → About**, use **Check for Updates → Download & Install → Restart**. Each action requires your confirmation. Finish or cancel an active capture/transfer and use or explicitly clear Buffer before restarting. Cancel stops the pending update. Periodic checks can be disabled with **Notify about updates**; manual checks remain available.
@@ -57,6 +59,7 @@ Captured content is processed locally. Optional Screen Recording permission is u
 - Capture and insertion depend on each app's Accessibility support. There is no complete verified app/browser compatibility matrix yet.
 - Google Docs canvas targeting is disabled. Table drops require a writable cell and replace that cell's value.
 - Chrome/Chromium paste compatibility remains a release-validation item. A posted Paste command alone does not prove insertion; check the field before retrying an uncertain transfer.
+- Rich editors may render emoji as images. If their complete inserted content or line boundaries cannot be established through Accessibility, the transfer remains unconfirmed and Buffer preserves the item for recovery.
 - Experimental selection features have additional Accessibility requirements and can safely reject unsupported content.
 
 When reporting an issue, include macOS, Drag 2.0, source app, and destination app versions, plus a reproduction using synthetic text. Do not attach private documents or clipboard dumps. Follow [CONTRIBUTING.md](../CONTRIBUTING.md) for bugs and proposals, or [SECURITY.md](../SECURITY.md) for private security reports.

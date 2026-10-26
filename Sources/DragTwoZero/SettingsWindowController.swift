@@ -283,7 +283,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         clipboardSwitch.target = self
         clipboardSwitch.action = #selector(overwriteClipboardChanged(_:))
         clipboardSwitch.setAccessibilityLabel("Overwrite clipboard")
-        clipboardSwitch.toolTip = "Keep successfully dropped content on the clipboard."
+        let clipboardExplanation = "Paste temporarily uses the clipboard. When off, the previous contents return after confirmed insertion. An unconfirmed paste may leave the captured content available. A newer copy always wins."
+        clipboardSwitch.toolTip = clipboardExplanation
+        clipboardDetail.toolTip = clipboardExplanation
         clipboardCard.contentView?.addSubview(clipboardLabel)
         clipboardCard.contentView?.addSubview(clipboardDetail)
         clipboardCard.contentView?.addSubview(clipboardSwitch)

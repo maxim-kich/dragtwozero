@@ -17,14 +17,17 @@ enum EditorReceiptText {
     struct Snapshot {
         let value: String
         let fragments: [Fragment]
+        let markerText: String
+        let markerRange: AXTextMarkerRange
     }
 
     static func readStable(snapshot: () -> Snapshot?, valid: () -> Bool) -> String? {
         guard valid(), let first = snapshot(),
-              let result = reconcile(value: first.value, fragments: first.fragments),
+              let result = reconcile(value: first.value, fragments: first.fragments, markerText: first.markerText),
               valid(), let second = snapshot(),
               first.value.utf16.elementsEqual(second.value.utf16), first.fragments == second.fragments,
-              valid() else { return nil }
+              first.markerText.utf16.elementsEqual(second.markerText.utf16),
+              SelectedTextMarkers.sameRange(first.markerRange, second.markerRange), valid() else { return nil }
         return result
     }
 
@@ -48,37 +51,43 @@ enum EditorReceiptText {
         return text
     }
 
-    /// All plain fragments must consume the complete AXValue in order. Only
-    /// structural newlines may occur between fragments. Never choose which
-    /// side of an omitted image a newline belongs to by looking at the payload.
-    static func reconcile(value: String, fragments: [Fragment]) -> String? {
-        guard fragments.contains(where: { if case .emoji = $0 { return true }; return false }) else { return nil }
-        let units = Array(value.utf16)
-        var offset = 0, result = "", previousImage = false
+    /// Require two complete representations of the same owned subtree. In
+    /// Chromium rich editors an inline image is U+FFFC in its marker string but
+    /// two phantom line feeds in AXValue. Preserve every literal text fragment;
+    /// never infer line ownership or replace object characters in arbitrary text.
+    static func reconcile(value: String, fragments: [Fragment], markerText: String) -> String? {
+        let marker = Array(markerText.utf16)
+        var offset = 0, valueProjection = "", semantic = "", images = 0, previousImage = false
         for fragment in fragments {
             switch fragment {
             case .text(let text):
-                let next = Array(text.utf16)
-                guard !next.isEmpty else { continue }
-                func matches() -> Bool {
-                    offset <= units.count - next.count && units[offset..<(offset + next.count)].elementsEqual(next)
-                }
-                if !matches() {
-                    let initial = offset
-                    while offset < units.count && [10, 13].contains(units[offset]) { offset += 1 }
-                    guard !previousImage, matches() else { return nil }
-                    result += String(decoding: units[initial..<offset], as: UTF16.self)
-                }
-                result += text; offset += next.count; previousImage = false
+                let literal = Array(text.utf16)
+                if literal.isEmpty { continue }
+                guard !literal.contains(0xFFFC), !previousImage || ![10, 13].contains(literal.first ?? 0),
+                      literal.count <= marker.count - offset,
+                      marker[offset..<(offset + literal.count)].elementsEqual(literal) else { return nil }
+                offset += literal.count; valueProjection += text; semantic += text; previousImage = false
             case .emoji(let text):
-                guard offset == units.count || ![10, 13].contains(units[offset]) else { return nil }
-                result += text; previousImage = true
+                guard !previousImage else { return nil }
+                // This literal gap comes only from the complete owned marker
+                // string, never from AXValue or the expected pasted payload.
+                let gapStart = offset
+                while offset < marker.count && marker[offset] == 10 { offset += 1 }
+                let gap = offset - gapStart
+                guard gap == 0 || gap == 2, offset < marker.count, marker[offset] == 0xFFFC else { return nil }
+                if gap == 2 { valueProjection += "\n\n"; semantic += "\n\n" }
+                var preceding = 0, index = offset
+                while index > 0 && marker[index - 1] == 10 { preceding += 1; index -= 1 }
+                guard preceding == 0 || preceding == 2, index == 0 || marker[index - 1] != 13 else { return nil }
+                // Chromium coalesces the two image-placeholder line feeds with
+                // exactly two real preceding marker line feeds. No other gap
+                // shape is inferred, and the authorized payload is never read here.
+                if preceding == 0 { valueProjection += "\n\n" }
+                semantic += text; images += 1; offset += 1; previousImage = true
             }
         }
-        guard offset <= units.count, units[offset...].allSatisfy({ [10, 13].contains($0) }),
-              !previousImage || offset == units.count else { return nil }
-        result += String(decoding: units[offset...], as: UTF16.self)
-        return result
+        guard images > 0, offset == marker.count, valueProjection.utf16.elementsEqual(value.utf16) else { return nil }
+        return semantic
     }
 
     static func read(_ editor: AXUIElement, valid: () -> Bool) -> String? {
@@ -91,27 +100,33 @@ enum EditorReceiptText {
                 guard valid(), remaining >= 0, depth < 20,
                       let role = attribute(node, kAXRoleAttribute) as? String else { return false }
                 if let parent {
-                    guard let owner = axElement(attribute(node, kAXParentAttribute)), CFEqual(owner, parent) else { return false }
+                    guard valid(), let owner = axElement(attribute(node, kAXParentAttribute)), CFEqual(owner, parent) else { return false }
                 }
                 switch role {
                 case "AXStaticText", "AXInlineTextBox":
-                    guard let text = attribute(node, kAXValueAttribute) as? String,
+                    guard valid(), let text = attribute(node, kAXValueAttribute) as? String,
                           text.utf16.count <= remainingText else { return false }
                     remainingText -= text.utf16.count
                     fragments.append(.text(text)); return true
                 case "AXImage":
+                    guard valid() else { return false }
                     let raw = attribute(node, kAXURLAttribute)
                     let url = (raw as? URL) ?? (raw as? String).flatMap(URL.init(string:))
                     guard let url, let emoji = notoEmoji(url) else { return false }
                     fragments.append(.emoji(emoji)); return true
                 default:
                     guard parent == nil || ["AXGroup", "AXGenericElement", "AXUnknown", "AXParagraph", "AXLink", "AXHeading", "AXListItem"].contains(role) else { return false }
-                    guard let children = attribute(node, kAXChildrenAttribute) as? [AXUIElement] else { return false }
+                    guard valid(), let children = attribute(node, kAXChildrenAttribute) as? [AXUIElement] else { return false }
                     return children.allSatisfy { walk($0, parent: node, depth: depth + 1) }
                 }
             }
             guard walk(editor, parent: nil, depth: 0), valid() else { return nil }
-            return Snapshot(value: value, fragments: fragments)
+            var rawRange: CFTypeRef?, rawText: CFTypeRef?
+            guard AXUIElementCopyParameterizedAttributeValue(editor, "AXTextMarkerRangeForUIElement" as CFString, editor, &rawRange) == .success,
+                  let rawRange, CFGetTypeID(rawRange) == AXTextMarkerRangeGetTypeID(), valid() else { return nil }
+            guard AXUIElementCopyParameterizedAttributeValue(editor, "AXStringForTextMarkerRange" as CFString, rawRange, &rawText) == .success,
+                  let markerText = rawText as? String, markerText.utf16.count <= 1_000_000, valid() else { return nil }
+            return Snapshot(value: value, fragments: fragments, markerText: markerText, markerRange: rawRange as! AXTextMarkerRange)
         }
         return readStable(snapshot: snapshot, valid: valid)
     }

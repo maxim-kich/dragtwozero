@@ -72,6 +72,19 @@ Never put private documents, recordings of unrelated windows, clipboard dumps or
 
 These checks require actual native interaction; unit tests and notarization do not establish that they passed.
 
+### Fresh-machine regression fixtures
+
+Use disposable sources and recipient-free, unsent drafts. Seed the clipboard with synthetic plain text and HTML, and seed each destination with `LEFT|RIGHT` with its caret after `|`.
+
+- Marquee a group containing `ALPHA: Before`, an inline image, a `guide` link, ` after.`, and a separate `CHARLIE` paragraph. Skip the image and retain every supported word and link in order. Test both marquee release orders, all-image groups, changed sources, and a following single-block drag. Native browser text selection is a separate control and does not exercise Drag's marquee.
+- Drop the group from Buffer into a native editor and a browser editor. Assert the complete expected content appears once at the saved caret. Reopen Buffer after the receipt settles and prove the slot is empty; a hidden panel alone does not prove consumption. Rejected and unconfirmed pastes must retain the original item, and an old receipt must never remove a newer item.
+- Repeat with CRLF multiline text in a browser textarea that normalizes line endings to LF, Unicode, combining characters, and links. In a rich editor, distinguish its full accessible text from incomplete `AXValue`; missing characters, duplicate content, extra edits, ambiguous image boundaries and unknown attachments must not confirm a transfer.
+- In Gmail, use a new empty compose window without recipients. Compare the actual captured synthetic payload with the entire delivered result. Gmail can render emoji as images, so an omitted emoji in accessibility text is not proof of an incorrect paste. Keep such a result unconfirmed unless its complete content can be established. Never send the draft.
+- Select a partial line, wrapped lines, styled/link text and a large passage natively. Verify Drag highlights only visible selected text, captures the full selection, rejects gaps or an unrelated source, and can capture again after cancellation or a Buffer drop.
+- With Overwrite clipboard off, prove all original formats return after confirmed delivery. Repeat with the option on, a newer copy during verification, a rejected target, a delayed clipboard reader, an unconfirmed result and an immediate following gesture. Restore only the exact revision owned by the test; protect cleanup with an ownership marker even when an assertion fails.
+
+Record baseline failures and fixed results separately, including the app commit, macOS/browser version, expected payload, actual insertion, Buffer state and clipboard ownership. Keep synthetic native recordings and diagnostics in ignored local evidence, with no private content. Passing these fixtures does not replace a retest of the packaged app on the affected clean machine.
+
 ### Notification Center / Dock compositor regression
 
 - In the affected test account, leave the full-display Notification Center (layer 21) and Dock (layer 20) surfaces present. Hover ordinary app text with the shortcut: the global AX hit must reach the same underlying app before these exact windows are ignored. The debug log records `system-overlay-pass-through` when that check succeeds.

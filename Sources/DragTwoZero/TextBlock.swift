@@ -99,7 +99,7 @@ struct TextBlockReader<Node> {
                 if runs.contains(where: { !$0.link && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
                    runs.count > 1, continuous(runs) { inferred = node }
                 else if inferred != nil { break }
-            } else if !["AXStaticText", "AXInlineTextBox", "AXLink"].contains(info.role) { break }
+            } else if !["AXStaticText", "AXInlineTextBox", "AXLink", "AXImage"].contains(info.role) { break }
         }
         if let inferred { return capture(inferred) }
         // A run inside a link must fall through to the standalone-link adapter.
@@ -140,6 +140,10 @@ struct TextBlockReader<Node> {
         guard budget > 0, depth < 24 else { return nil }
         let info = details(node)
         guard !info.isParagraph, !info.isEditable else { return nil }
+        // An image contributes no text. It must not break otherwise continuous
+        // prose in a generic browser wrapper, including when AX hits the image
+        // at that wrapper's midpoint during multiselect validation.
+        if info.role == "AXImage" { return [] }
         if ["AXStaticText", "AXInlineTextBox"].contains(info.role) {
             return [Run(text: info.value ?? info.title ?? "", frame: info.frame, link: false)]
         }

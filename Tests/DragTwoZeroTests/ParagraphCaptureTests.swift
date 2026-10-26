@@ -135,6 +135,21 @@ final class ParagraphCaptureTests: XCTestCase {
         XCTAssertEqual(capture(link)?.payload.text, "Read [guide](https://example.com) carefully.")
         XCTAssertEqual(capture(first)?.frame, group.info.frame)
     }
+    func testInlineImageIsSkippedWithoutDiscardingSupportedTextAndLinks() {
+        let first = Node("AXStaticText", "Read ", frame: CGRect(x: 10, y: 20, width: 40, height: 20))
+        let image = Node("AXImage", "Unsupported image", frame: CGRect(x: 50, y: 20, width: 60, height: 20))
+        let link = Node("AXLink", "guide", frame: CGRect(x: 110, y: 20, width: 50, height: 20), url: URL(string: "https://example.test/guide"))
+        let last = Node("AXStaticText", " then continue.", frame: CGRect(x: 160, y: 20, width: 130, height: 20))
+        let group = Node("AXGroup", frame: CGRect(x: 10, y: 20, width: 280, height: 20), children: [first, image, link, last])
+        for hit in [first, image, link, last] {
+            XCTAssertEqual(capture(hit)?.payload.text, "Read [guide](https://example.test/guide) then continue.")
+            XCTAssertEqual(capture(hit)?.frame, group.info.frame)
+        }
+        let unsupported = Node("AXGroup", children: [Node("AXImage", "Not text")])
+        XCTAssertNil(capture(unsupported.children[0]))
+        XCTAssertNil(capture(unsupported))
+    }
+
     func testSeparateParagraphsNeverMergeAcrossPageContainer() {
         let firstText = Node("AXStaticText", "First.")
         let secondText = Node("AXStaticText", "Second.")

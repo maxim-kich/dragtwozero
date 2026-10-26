@@ -26,8 +26,14 @@ final class Delivery {
         }
         let receiptValid = {
             let beforeDeadline = ProcessInfo.processInfo.systemUptime < deadline
-            return commitToken.map { $0.allowsReadOnlyReceipt(beforeDeadline: beforeDeadline) }
-                ?? (beforeDeadline && isCurrent())
+            guard beforeDeadline else { diagnostic("verification-deadline"); return false }
+            if let commitToken {
+                let allowed = commitToken.allowsReadOnlyReceipt(beforeDeadline: true)
+                if !allowed { diagnostic("verification-not-dispatched") }
+                return allowed
+            }
+            if !isCurrent() { diagnostic("verification-cancelled"); return false }
+            return true
         }
         let finish: (Bool) -> Void = { [self] confirmed in
             DispatchQueue.main.async {
@@ -179,14 +185,23 @@ final class Delivery {
                 }
                 finish(confirmed)
             }
-            guard valid() else { diagnostic("verification-invalidated"); complete(false); return }
+            guard valid() else { complete(false); return }
             // Read the exact editor we wrote to. Its ancestors may change as a
             // rich editor lays out inserted content; that must not invalidate
             // an otherwise exact receipt. Never resolve or write a new target.
             let raw = attribute(element, kAXValueAttribute)
             let after = (raw as? String) ?? (before == nil ? (raw as? NSNumber)?.stringValue : nil)
-            let confirmed = before == nil ? after == payload.text : after.map { before?.confirmsInsertion(of: payload.text, observed: $0) ?? false } ?? false
-            guard valid() else { diagnostic("verification-invalidated"); complete(false); return }
+            var confirmed = before == nil ? after == payload.text : after.map { before?.confirmsLineNormalizedInsertion(of: payload.text, observed: $0) ?? false } ?? false
+            // AXValue can lag or omit rich editor descendants. A full range
+            // read from this exact editor is an independent positive receipt.
+            // Never inspect a prefix of expected length or another editor.
+            if !confirmed, let before, valid(), let fullText = Self.fullEditorText(element, valid: valid) {
+                confirmed = before.confirmsLineNormalizedInsertion(of: payload.text, observed: fullText)
+            }
+            if !confirmed, let before, valid(), let completeText = EditorReceiptText.read(element, valid: valid) {
+                confirmed = before.confirmsInsertion(of: payload.text, observed: completeText)
+            }
+            guard valid() else { complete(false); return }
             // Read-only verification can use the whole admission deadline. A
             // slow recipient must not see the old clipboard after two seconds.
             if !confirmed && clipboard?.isCurrent != false {
@@ -197,6 +212,20 @@ final class Delivery {
                 complete(confirmed)
             }
         }
+    }
+
+    private static func fullEditorText(_ editor: AXUIElement, valid: () -> Bool) -> String? {
+        guard valid(), let count = attribute(editor, kAXNumberOfCharactersAttribute) as? NSNumber else { return nil }
+        let length = count.intValue
+        guard length >= 0, length <= 1_000_000, valid() else { return nil }
+        var range = CFRange(location: 0, length: length)
+        guard let rawRange = AXValueCreate(.cfRange, &range) else { return nil }
+        var raw: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(editor, kAXStringForRangeParameterizedAttribute as CFString, rawRange, &raw) == .success,
+              let text = raw as? String, text.utf16.count == length, valid(),
+              let currentCount = attribute(editor, kAXNumberOfCharactersAttribute) as? NSNumber,
+              currentCount.intValue == length, valid() else { return nil }
+        return text
     }
 
     private static func insertionState(_ editor: AXUIElement, diagnostic: (StaticString) -> Void) -> EditorInsertionState? {

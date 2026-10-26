@@ -34,6 +34,17 @@ struct EditorInsertionState: Equatable {
               !result.utf16.elementsEqual(value.utf16) else { return false }
         return result.utf16.elementsEqual(observed.utf16)
     }
+
+    /// Editors may expose CRLF or LF for the same inserted line boundary.
+    /// Keep every space, line, Unicode scalar and prefix/suffix otherwise exact.
+    func confirmsLineNormalizedInsertion(of text: String, observed: String) -> Bool {
+        guard let result = replacingSelection(with: text) else { return false }
+        func lines(_ value: String) -> String {
+            value.replacingOccurrences(of: "\r\n", with: "\n")
+        }
+        let expected = lines(result), original = lines(value), after = lines(observed)
+        return !expected.utf16.elementsEqual(original.utf16) && expected.utf16.elementsEqual(after.utf16)
+    }
 }
 
 /// The production commit boundary, also exercised with deterministic editor/clipboard fakes.

@@ -285,23 +285,151 @@ struct AccessibleSelectedTextAdapter {
 
     /// Browser selections span multiple AX nodes. Their owner is the web area,
     /// and their identity is a pair of opaque text markers, not a local CFRange.
-    private func markerCandidate(at element: AXUIElement, deadline: TimeInterval) -> CaptureCandidate? {
-        guard let raw = attribute(element, "AXSelectedTextMarkerRange"),
+    private func markerCandidate(at element: AXUIElement, deadline initialDeadline: TimeInterval) -> CaptureCandidate? {
+        guard ProcessInfo.processInfo.systemUptime < initialDeadline,
+              let raw = attribute(element, "AXSelectedTextMarkerRange"),
               CFGetTypeID(raw) == AXTextMarkerRangeGetTypeID() else { return nil }
         let selected = raw as! AXTextMarkerRange
-        guard let text = parameter(element, "AXStringForTextMarkerRange", selected) as? String,
+        guard ProcessInfo.processInfo.systemUptime < initialDeadline,
+              let text = parameter(element, "AXStringForTextMarkerRange", selected) as? String,
               !text.isEmpty, text.utf16.count <= 32_000 else { return nil }
+        // Very large selections need more visual-line IPCs, still bounded by
+        // the original lookup start and the caller's 800ms acceptance token.
+        let deadline = text.utf16.count > 4_096 ? initialDeadline + 0.3 : initialDeadline
         let orderedRaw = parameter(element, "AXTextMarkerRangeForUnorderedTextMarkers",
             [AXTextMarkerRangeCopyStartMarker(selected), AXTextMarkerRangeCopyEndMarker(selected)] as CFArray)
         let ordered = orderedRaw.flatMap { CFGetTypeID($0) == AXTextMarkerRangeGetTypeID() ? ($0 as! AXTextMarkerRange) : nil } ?? selected
         let units = Array(text.utf16)
         let container = viewportBounds(element)
-        func walk(from start: AXTextMarker, to end: AXTextMarker) -> [CGRect]? {
+        // Read selected visual lines through opaque markers. Never interpret a
+        // provider's node-local index as a document offset. Every segment must
+        // agree exactly with the selected text before its bounds can be used.
+        func lineFrames(from start: AXTextMarker, to end: AXTextMarker) -> [CGRect]? {
+            func marker(_ name: String, _ point: AXTextMarker) -> AXTextMarker? {
+                guard ProcessInfo.processInfo.systemUptime < deadline,
+                      let raw = parameter(element, name, point), CFGetTypeID(raw) == AXTextMarkerGetTypeID() else { return nil }
+                return raw as! AXTextMarker
+            }
+            func string(_ a: AXTextMarker, _ b: AXTextMarker) -> String? {
+                guard ProcessInfo.processInfo.systemUptime < deadline else { return nil }
+                return parameter(element, "AXStringForTextMarkerRange", AXTextMarkerRangeCreate(kCFAllocatorDefault, a, b)) as? String
+            }
+            func rectangle(_ a: AXTextMarker, _ b: AXTextMarker) -> CGRect? {
+                guard ProcessInfo.processInfo.systemUptime < deadline,
+                      let raw = parameter(element, "AXBoundsForTextMarkerRange", AXTextMarkerRangeCreate(kCFAllocatorDefault, a, b)),
+                      CFGetTypeID(raw) == AXValueGetTypeID() else { return nil }
+                var frame = CGRect.zero
+                return AXValueGetValue(raw as! AXValue, .cgRect, &frame) ? frame : nil
+            }
+            var current = start, offset = 0, transitions = 0
+            var frames: [CGRect] = []
+            var owners: [(AXUIElement, AXTextMarker, String)] = []
+            var continuationOwner: AXUIElement?
+            while offset < units.count {
+                guard ProcessInfo.processInfo.systemUptime < deadline, transitions < 1024, frames.count < 512,
+                      let glyphEnd = marker("AXNextTextMarkerForTextMarker", current) else { return nil }
+                transitions += 1
+                // Adjacent nodes can encode their shared boundary differently.
+                // A cross-node one-character range can report document bounds;
+                // normalize only an explicitly empty equivalent transition.
+                if let localStart = marker("AXPreviousTextMarkerForTextMarker", glyphEnd),
+                   !SelectedTextMarkers.sameMarker(current, localStart), string(current, localStart)?.isEmpty == true,
+                   string(current, glyphEnd)?.utf16.elementsEqual(string(localStart, glyphEnd)?.utf16 ?? "".utf16) == true {
+                    current = localStart; continuationOwner = nil
+                }
+                guard ProcessInfo.processInfo.systemUptime < deadline else { return nil }
+                let resolvedOwner = continuationOwner ?? axElement(parameter(element, "AXUIElementForTextMarker", current))
+                guard let owner = resolvedOwner else { return nil }
+                let ownerEnd: AXTextMarker, ownerRole: String
+                if let cached = owners.first(where: { CFEqual($0.0, owner) }) { ownerEnd = cached.1; ownerRole = cached.2 }
+                else {
+                    guard ProcessInfo.processInfo.systemUptime < deadline,
+                          let raw = parameter(element, "AXTextMarkerRangeForUIElement", owner),
+                          CFGetTypeID(raw) == AXTextMarkerRangeGetTypeID() else { return nil }
+                    ownerEnd = AXTextMarkerRangeCopyEndMarker(raw as! AXTextMarkerRange)
+                    guard ProcessInfo.processInfo.systemUptime < deadline,
+                          let role = attribute(owner, kAXRoleAttribute) as? String else { return nil }
+                    ownerRole = role
+                    if owners.count < 128 { owners.append((owner, ownerEnd, role)) }
+                }
+                guard ProcessInfo.processInfo.systemUptime < deadline,
+                      let rawLine = parameter(element, "AXLineTextMarkerRangeForTextMarker", current),
+                      CFGetTypeID(rawLine) == AXTextMarkerRangeGetTypeID() else { return nil }
+                let lineEnd = AXTextMarkerRangeCopyEndMarker(rawLine as! AXTextMarkerRange)
+                guard let lineText = string(current, lineEnd) else { return nil }
+                var next = lineEnd, part = Array(lineText.utf16)
+                // A provider's indexes are local to marker nodes. Split by
+                // actual owner identity instead, and avoid repeatedly reading
+                // the entire remaining selection for every visual line.
+                guard ProcessInfo.processInfo.systemUptime < deadline,
+                      let lineOwner = axElement(parameter(element, "AXUIElementForTextMarker", lineEnd)) else { return nil }
+                if !part.isEmpty, ["AXStaticText", "AXInlineTextBox"].contains(ownerRole), !CFEqual(owner, lineOwner) {
+                    guard let owned = string(current, ownerEnd) else { return nil }
+                    let ownedUnits = Array(owned.utf16)
+                    if ownedUnits.count < part.count { next = ownerEnd; part = ownedUnits }
+                }
+                if part.isEmpty {
+                    next = glyphEnd
+                    guard let glyphText = string(current, glyphEnd) else { return nil }
+                    part = Array(glyphText.utf16)
+                }
+                if part.count > units.count - offset {
+                    next = end
+                    guard let tail = string(current, end) else { return nil }
+                    part = Array(tail.utf16)
+                }
+                guard !part.isEmpty, part.count <= units.count - offset,
+                      units[offset..<(offset + part.count)].elementsEqual(part) else { return nil }
+                var visibleEnd = next, visible = part
+                while let last = visible.last, [10, 13, 0x2028, 0x2029].contains(last) {
+                    guard let previous = marker("AXPreviousTextMarkerForTextMarker", visibleEnd),
+                          let trimmed = string(current, previous) else { return nil }
+                    let trimmedUnits = Array(trimmed.utf16)
+                    guard trimmedUnits.count < visible.count, visible.prefix(trimmedUnits.count).elementsEqual(trimmedUnits),
+                          visible.dropFirst(trimmedUnits.count).allSatisfy({ [10, 13, 0x2028, 0x2029].contains($0) }) else { return nil }
+                    visibleEnd = previous; visible = trimmedUnits
+                }
+                if !visible.isEmpty {
+                    guard let glyph = rectangle(current, glyphEnd) else { return nil }
+                    var measured = rectangle(current, visibleEnd)
+                    // Normalize a cross-node equivalent endpoint only when the
+                    // direct range is unusable. Ordinary lines need no extra IPC.
+                    if measured.map({ SelectedTextGeometry.isTextLine($0, character: glyph, length: visible.count, container: container) }) != true,
+                       let lastStart = marker("AXPreviousTextMarkerForTextMarker", visibleEnd),
+                       let localEnd = marker("AXNextTextMarkerForTextMarker", lastStart),
+                       string(localEnd, visibleEnd)?.isEmpty == true,
+                       string(current, localEnd)?.utf16.elementsEqual(visible) == true { measured = rectangle(current, localEnd) }
+                    guard let frame = measured else { return nil }
+                    if frame.width == 0 || frame.height == 0 {
+                        guard glyph.width == 0 || glyph.height == 0 else { return nil }
+                    } else {
+                        if !SelectedTextGeometry.isTextLine(frame, character: glyph, length: visible.count, container: container) {
+                            guard let pieces = walk(from: current, to: visibleEnd, expected: visible) else { return nil }
+                            frames = SelectedTextGeometry.mergeGlyphs(frames + pieces)
+                            current = next; offset += part.count
+                            continuationOwner = SelectedTextMarkers.sameMarker(next, lineEnd) ? lineOwner:nil
+                            continue
+                        }
+                        if let last = frames.last {
+                            let merged = SelectedTextGeometry.mergeGlyphs([last, frame])
+                            if merged.count == 1 { frames[frames.count - 1] = merged[0] }
+                            else { frames.append(frame) }
+                        } else { frames.append(frame) }
+                    }
+                }
+                current = next; offset += part.count
+                continuationOwner = SelectedTextMarkers.sameMarker(next, lineEnd) ? lineOwner:nil
+            }
+            guard SelectedTextMarkers.sameMarker(current, end) || string(current, end)?.isEmpty == true else { return nil }
+            return frames.isEmpty ? nil : SelectedTextGeometry.mergeGlyphs(frames)
+        }
+        func walk(from start: AXTextMarker, to end: AXTextMarker, expected: [UInt16]? = nil) -> [CGRect]? {
+            let expectedUnits = expected ?? units
             var current = start
             var offset = 0, emptyTransitions = 0
             var glyphs: [CGRect] = []
             // Follow opaque positions rather than interpreting node-local offsets.
-            while offset < units.count {
+            while offset < expectedUnits.count {
                 guard ProcessInfo.processInfo.systemUptime < deadline,
                       let rawNext = parameter(element, "AXNextTextMarkerForTextMarker", current),
                       CFGetTypeID(rawNext) == AXTextMarkerGetTypeID() else { return nil }
@@ -315,10 +443,23 @@ struct AccessibleSelectedTextAdapter {
                     guard emptyTransitions <= 512 else { return nil }
                     current = next; continue
                 }
-                guard fragmentUnits.count <= units.count - offset,
-                      units[offset..<(offset + fragmentUnits.count)].elementsEqual(fragmentUnits) else { return nil }
+                guard fragmentUnits.count <= expectedUnits.count - offset,
+                      expectedUnits[offset..<(offset + fragmentUnits.count)].elementsEqual(fragmentUnits) else { return nil }
                 if !fragmentUnits.allSatisfy({ [10, 13, 0x2028, 0x2029].contains($0) }) {
-                    guard let raw = parameter(element, "AXBoundsForTextMarkerRange", segment), CFGetTypeID(raw) == AXValueGetTypeID() else { return nil }
+                    var measured = segment
+                    if ProcessInfo.processInfo.systemUptime < deadline,
+                       let rawPrevious = parameter(element, "AXPreviousTextMarkerForTextMarker", next),
+                       CFGetTypeID(rawPrevious) == AXTextMarkerGetTypeID() {
+                        let previous = rawPrevious as! AXTextMarker
+                        let gap = AXTextMarkerRangeCreate(kCFAllocatorDefault, current, previous)
+                        let local = AXTextMarkerRangeCreate(kCFAllocatorDefault, previous, next)
+                        if ProcessInfo.processInfo.systemUptime < deadline,
+                           (parameter(element, "AXStringForTextMarkerRange", gap) as? String)?.isEmpty == true,
+                           ProcessInfo.processInfo.systemUptime < deadline,
+                           (parameter(element, "AXStringForTextMarkerRange", local) as? String)?.utf16.elementsEqual(fragmentUnits) == true { measured = local }
+                    }
+                    guard ProcessInfo.processInfo.systemUptime < deadline,
+                          let raw = parameter(element, "AXBoundsForTextMarkerRange", measured), CFGetTypeID(raw) == AXValueGetTypeID() else { return nil }
                     var frame = CGRect.zero
                     guard AXValueGetValue(raw as! AXValue, .cgRect, &frame) else { return nil }
                     if frame.width > 0 && frame.height > 0 {
@@ -336,7 +477,8 @@ struct AccessibleSelectedTextAdapter {
             return frames.isEmpty || frames.count > 512 ? nil : frames
         }
         let start = AXTextMarkerRangeCopyStartMarker(ordered), end = AXTextMarkerRangeCopyEndMarker(ordered)
-        guard let frames = walk(from: start, to: end) ?? walk(from: end, to: start) else { return nil }
+        guard let frames = lineFrames(from: start, to: end)
+            ?? walk(from: start, to: end) ?? walk(from: end, to: start) else { return nil }
         // Browser selection identity is its opaque range, not node-local offsets.
         let selection = CFRange(location: 0, length: units.count)
         // Modern Chromium advertises the options form; WebKit can also expose

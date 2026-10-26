@@ -18,7 +18,7 @@ Apple Silicon Mac. The installation minimum is macOS 13, while official support 
 
 This candidate was tested on macOS 26.4.1. macOS 27 validation remains pending; do not describe latest-release support as verified until it passes. Record the final tested app/browser versions before publication.
 
-This is an alpha. Compatibility depends on the source and destination apps' Accessibility support. Google Docs canvas targeting is disabled. See the [usage guide](usage.md#compatibility-and-limitations) for current limitations.
+This is an alpha. Compatibility depends on the source and destination apps' Accessibility support. See the [usage guide](usage.md#compatibility-and-limitations) for current limitations.
 
 ## Install
 

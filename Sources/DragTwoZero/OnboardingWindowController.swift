@@ -6,12 +6,15 @@ import UserNotifications
 /// A local, repeatable introduction. Closing before Get Started quits the app.
 final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
     static let completedKey = "onboardingCompletedV1"
-    private static let updatesStep = 4
+    private static let updatesStep = 5
     private static let finalStep = OnboardingSession.finalStep
     private let onBufferChange: () -> Void
     private let onMenuBarVisibilityChange: (Bool) -> Void
     private let onIncompleteClose: () -> Void
     private let bufferSwitch = NSSwitch()
+    private let launchAtLoginView: LaunchAtLoginView
+    private let isAccessibilityGranted: () -> Bool
+    private let readNotificationAuthorization: (@escaping (UNAuthorizationStatus) -> Void) -> Void
     private var session = OnboardingSession()
     private var step: Int {
         get { session.step }
@@ -43,7 +46,15 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
 
     init(onBufferChange: @escaping () -> Void = {},
          onMenuBarVisibilityChange: @escaping (Bool) -> Void = { _ in },
-         onIncompleteClose: @escaping () -> Void = { NSApp.terminate(nil) }) {
+         onIncompleteClose: @escaping () -> Void = { NSApp.terminate(nil) },
+         launchAtLogin: LaunchAtLoginController = LaunchAtLoginController(),
+         isAccessibilityGranted: @escaping () -> Bool = AXIsProcessTrusted,
+         readNotificationAuthorization: @escaping (@escaping (UNAuthorizationStatus) -> Void) -> Void = { completion in
+             UNUserNotificationCenter.current().getNotificationSettings { completion($0.authorizationStatus) }
+         }) {
+        self.readNotificationAuthorization = readNotificationAuthorization
+        self.isAccessibilityGranted = isAccessibilityGranted
+        self.launchAtLoginView = LaunchAtLoginView(frame: NSRect(x: 0, y: 0, width: 880, height: 76), leadingInset: 62, controller: launchAtLogin)
         self.onBufferChange = onBufferChange
         self.onMenuBarVisibilityChange = onMenuBarVisibilityChange
         self.onIncompleteClose = onIncompleteClose
@@ -217,6 +228,13 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
             refreshPermission()
             permissionTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.refreshPermission() }
         case 2:
+            heading.stringValue = "Ready when you log in"
+            detail.stringValue = "Let Drag 2.0 start automatically when you log in to your Mac.\nThis is optional. You can change it later in General settings."
+            let startupBox = row("", "", symbol: "power", y: 28)
+            startupBox.addSubview(launchAtLoginView)
+            launchAtLoginView.refresh()
+            permissionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.launchAtLoginView.refresh() }
+        case 3:
             heading.stringValue = "Choose your shortcut"
             detail.stringValue = "Keep Option + Command, or choose a combination that feels natural.\nClick the shortcut field, press your keys, then release them."
             let shortcutBox = row("Trigger Shortcut", "", symbol: "keyboard", y: 28)
@@ -224,7 +242,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
             recorder.frame.origin = NSPoint(x: 636, y: 38 - recorder.controlCenterY)
             shortcutBox.addSubview(recorder)
             shortcutRecorder = recorder
-        case 3:
+        case 4:
             heading.stringValue = "Give your drag a place to rest"
             detail.stringValue = "Using one screen, or need somewhere to park your drag?\nUse the optional Buffer to keep an item while you switch apps."
             let bufferBox = row("Buffer", "Park an item, then drag it into an input when you’re ready.", symbol: "tray", y: 28)
@@ -235,7 +253,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
             bufferSwitch.setAccessibilityLabel("Buffer")
             bufferSwitch.toolTip = "Keep one item above your apps. Off by default."
             bufferBox.addSubview(bufferSwitch)
-        case 4:
+        case 5:
             heading.stringValue = "Hear about updates"
             detail.stringValue = "Get a notification when a new version is available.\nYou choose when to download and install it."
             let notificationBox = row("Notify about updates", "", symbol: "bell", y: 28,
@@ -260,7 +278,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
             let categories = row("", "", symbol: "", y: 0)
             categories.frame = NSRect(x: 200, y: 0, width: 480, height: 76)
             categories.subviews.first?.frame = categories.bounds
-            let items = [("Behaviour", "slider.horizontal.3"), ("Appearance", "paintpalette"), ("Motion", "waveform.path")]
+            let items = [("Behaviour", "slider.horizontal.3"), ("Appearance", "paintpalette"), ("Experimental", "flask")]
             for (index, item) in items.enumerated() {
                 let x = CGFloat(index) * 160
                 let icon = NSImageView(frame: NSRect(x: x + 68, y: 43, width: 24, height: 24))
@@ -325,7 +343,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
         granted ? "Accessibility is enabled." : "Enable Drag 2.0 in System Settings."
     }
     private func refreshPermission() {
-        let granted = AXIsProcessTrusted()
+        let granted = isAccessibilityGranted()
         permissionStatus.stringValue = Self.permissionStatusText(granted: granted)
         permissionStatus.textColor = granted ? .systemGreen : .secondaryLabelColor
         accessibilitySwitch.state = granted ? .on : .off
@@ -346,7 +364,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc private func requestPermission() {
-        let granted = AXIsProcessTrusted()
+        let granted = isAccessibilityGranted()
         accessibilitySwitch.state = granted ? .on : .off
         if granted {
             NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
@@ -358,11 +376,11 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
         // Let the macOS alert open Settings; opening it here as well leaves a duplicate alert behind.
     }
     private func refreshNotifications() {
-        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+        readNotificationAuthorization { [weak self] status in
             DispatchQueue.main.async {
                 guard let self, self.step == Self.updatesStep, !self.notificationRequestPending else { return }
-                let authorized = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
-                self.notificationsDenied = settings.authorizationStatus == .denied
+                let authorized = status == .authorized || status == .provisional
+                self.notificationsDenied = status == .denied
                 self.notificationStatus.stringValue = authorized ? "Notifications allowed in macOS." : "Notifications are not allowed in macOS."
                 self.notificationPermissionButton.isEnabled = !authorized
                 self.notificationPermissionButton.title = authorized ? "Notifications Allowed" :
@@ -467,7 +485,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
     @objc private func previous() { transition(to: max(0, step - 1)) }
     @objc private func advance() {
         guard !transitioning else { return }
-        if step == 1 && !AXIsProcessTrusted() { refreshPermission(); return }
+        if step == 1 && !isAccessibilityGranted() { refreshPermission(); return }
         if step == Self.finalStep {
             guard session.finish() else { return }
             UserDefaults.standard.set(true, forKey: Self.completedKey)

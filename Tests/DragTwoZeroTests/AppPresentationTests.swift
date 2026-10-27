@@ -54,7 +54,7 @@ final class AppPresentationTests: XCTestCase {
         let status = try XCTUnwrap(views.compactMap { $0 as? NSTextField }.first {
             $0.accessibilityLabel() == "Accessibility permission status"
         })
-        XCTAssertEqual(status.stringValue, AXIsProcessTrusted() ? "Allowed" : "Not allowed — enable Drag 2.0 in System Settings.")
+        XCTAssertEqual(status.stringValue, AXIsProcessTrusted() ? "Allowed" : "Not allowed")
         XCTAssertTrue(views.compactMap { $0 as? NSButton }.contains {
             $0.accessibilityLabel() == "Manage Accessibility permission"
         })

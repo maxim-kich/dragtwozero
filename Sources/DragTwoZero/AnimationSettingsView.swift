@@ -12,7 +12,6 @@ final class AnimationSettingsView: NSView {
         super.init(frame: CGRect(x: 0, y: 0, width: 592, height: 140))
         let card = settingsOutlineCard(bounds)
         addSubview(card)
-        card.contentView?.addSubview(settingsCardDivider(y: 88, width: bounds.width))
         titleLabel.frame = CGRect(x: 16, y: 104, width: 180, height: 20)
         card.contentView?.addSubview(titleLabel)
         toggle.frame = CGRect(x: 530, y: 102, width: 40, height: 24)

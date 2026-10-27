@@ -42,11 +42,11 @@ Images are skipped while supported text and links remain in the group. A selecti
 
 Some browsers expose clickable images and avatars as links. Including one in a mixed selection can cause the highlights to disappear when dragging starts if that link cannot be revalidated. Leave that item out of the group or drag a supported link individually. This is a known Multi-select limitation.
 
-**Drag selected text:** select a passage natively, hold the shortcut, and hover the selection. Click any highlighted line to drag the entire selection. This requires the source app to expose the selection and its visual bounds through Accessibility. An unreadable selection is rejected rather than expanded to a larger paragraph.
+**Drag selected text:** select a passage natively, then hold the shortcut. A **Drag selected text** hint appears under the pointer without outlining the source selection. Grab that hint, drag it into an input, and release the mouse to drop. After grabbing, you can release the shortcut and keep dragging. Releasing the shortcut before grabbing cancels the hint; Escape cancels at any time. Clicking outside the hint cancels and lets that click reach the source app. This requires readable selected text through Accessibility, but does not require bounds for every selected line. The selection is checked again when the hint is grabbed; changed or unreadable text is rejected.
 
 Formatting also depends on the attributes the source exposes for that selection. Some browsers expose bold text but omit link destinations; the selected words remain plain text for those links. Drag does not infer a URL from color or underlining.
 
-With Drag selected text enabled, a browser can report a non-text object or control as an unreadable selection, even while the pointer is over ordinary text or empty space. This can prevent highlighting and Multi-select. Turning off **Drag selected text** bypasses this selection check; other capture limitations still apply. This is a known browser selection-state limitation and is not tied to whether an input is open.
+With Drag selected text enabled, an unreadable selection can still prevent capture. A stable browser object/control range that contains no text leaves ordinary block capture available. Missing source text, changed markers or an expired read are rejected. Turning off **Drag selected text** bypasses selected-text pickup; other capture limitations still apply. This is not tied to whether an input is open.
 
 ## Clipboard and privacy
 
@@ -62,8 +62,21 @@ Captured content is processed locally. Optional Screen Recording permission is u
 - This candidate was tested on macOS 26.4.1; macOS 27 validation is pending. The installation minimum does not mean every installable OS version has been tested.
 - Capture and insertion depend on each app's Accessibility support. There is no complete verified app/browser compatibility matrix yet.
 - Google Docs canvas targeting is disabled. Table drops require a writable cell and replace that cell's value.
-- Chrome/Chromium paste compatibility remains a release-validation item. A posted Paste command alone does not prove insertion; check the field before retrying an uncertain transfer.
+- A [known Chromium clipboard race](#known-chromium-paste-issue) can prevent insertion after Paste, including with both experimental features off. A posted Paste command alone does not prove insertion.
 - Rich editors may render emoji as images. If their complete inserted content or line boundaries cannot be established through Accessibility, the transfer remains unconfirmed and Buffer preserves the item for recovery.
 - Experimental selection features have additional Accessibility requirements and can safely reject unsupported content.
+
+### Known Chromium paste issue
+
+On affected macOS Chrome/Chromium builds, a direct or Buffer drop can reach the input and send Paste without inserting anything. This is separate from experimental highlighting and mixed-selection limitations. Chromium has an [upstream fix for a clipboard sequence-token race](https://chromium.googlesource.com/chromium/src/+/fc5529f522a28df6ff5d5f7e572debc71d6f18e4) that matches the observed symptom: the browser can generate two different tokens for the same clipboard revision and discard the insertion.
+
+Exact source versions checked on 27 October 2026:
+
+- [155.0.8059.85](https://chromium.googlesource.com/chromium/src/+/155.0.8059.85/ui/base/clipboard/clipboard_mac.mm) and [156.0.8078.48](https://chromium.googlesource.com/chromium/src/+/156.0.8078.48/ui/base/clipboard/clipboard_mac.mm) still contain the affected logic.
+- [157.0.8103.15 Beta](https://chromium.googlesource.com/chromium/src/+/157.0.8103.15/ui/base/clipboard/clipboard_mac.mm) contains the upstream correction. This source check does not establish the earliest fixed release or guarantee compatibility with every Chromium-based app.
+
+A newer version number alone is not proof of the fix. Use a browser build confirmed to contain the correction, fully quit and reopen it after updating, and verify insertion in your actual input. An updated app bundle on disk does not update an already running browser session. The Beta source comparison is not a recommendation to depend on a testing browser for normal use.
+
+Check the destination before retrying so a late insertion is not duplicated. An unconfirmed drop keeps its Buffer item for recovery and can leave captured content on the clipboard even with Overwrite clipboard off. Drag does not automatically retry Paste or bypass destination validation. The match to the upstream issue does not prove that every missing insertion has the same cause.
 
 When reporting an issue, include macOS, Drag 2.0, source app, and destination app versions, plus a reproduction using synthetic text. Do not attach private documents or clipboard dumps. Follow [CONTRIBUTING.md](../CONTRIBUTING.md) for bugs and proposals, or [SECURITY.md](../SECURITY.md) for private security reports.

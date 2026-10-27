@@ -117,6 +117,63 @@ final class ParagraphCaptureTests: XCTestCase {
                        "ALPHA bold and italic with [guide](https://example.test/guide)")
     }
 
+    func testGenericT3ParagraphRetainsBoldAtBothEdgesFromEveryInlineHit() throws {
+        let start = Node("AXStaticText", "QA bold start", frame: CGRect(x: 10, y: 23, width: 92, height: 17))
+        let first = Node("AXGroup", frame: start.info.frame!, children: [start])
+        first.info.subrole = "AXStrongStyleGroup"
+        let middle = Node("AXStaticText", " plain middle ", frame: CGRect(x: 101, y: 23, width: 86, height: 17))
+        let end = Node("AXStaticText", "QA bold end", frame: CGRect(x: 187, y: 23, width: 84, height: 17))
+        let last = Node("AXGroup", frame: end.info.frame!, children: [end])
+        last.info.subrole = "AXStrongStyleGroup"
+        let paragraph = Node("AXGroup", frame: CGRect(x: 10, y: 20, width: 570, height: 23), children: [first, middle, last])
+        let reader = TextBlockReader<Node>(details: { $0.info }, parent: { $0.parent }, children: { $0.children }, equal: { $0 === $1 })
+        for hit in [start, first, middle, last, end] {
+            let result = try XCTUnwrap(reader.resolution(at: hit))
+            XCTAssertTrue(result.block === paragraph)
+            XCTAssertEqual(result.candidate.payload.text, "QA bold start plain middle QA bold end")
+            XCTAssertEqual(capture(hit, preserveStructure: true)?.payload.text, "**QA bold start** plain middle **QA bold end**")
+        }
+    }
+
+    func testGenericT3BulletKeepsBoldLabelsAndBodyTogetherFromEveryInlineHit() throws {
+        let start = Node("AXStaticText", "Bold start", frame: CGRect(x: 25, y: 20, width: 80, height: 18))
+        let first = Node("AXGroup", frame: start.info.frame!, children: [start])
+        first.info.subrole = "AXStrongStyleGroup"
+        let middle = Node("AXStaticText", " ordinary body ", frame: CGRect(x: 105, y: 20, width: 110, height: 18))
+        let end = Node("AXStaticText", "bold end", frame: CGRect(x: 215, y: 20, width: 70, height: 18))
+        let last = Node("AXGroup", frame: end.info.frame!, children: [end])
+        last.info.subrole = "AXStrongStyleGroup"
+        let marker = Node("AXListMarker", "• ", frame: CGRect(x: 10, y: 20, width: 10, height: 18))
+        let item = Node("AXGroup", frame: CGRect(x: 10, y: 20, width: 400, height: 20), children: [marker, first, middle, last])
+        let reader = TextBlockReader<Node>(details: { $0.info }, parent: { $0.parent }, children: { $0.children }, equal: { $0 === $1 })
+        for hit in [start, first, middle, last, end] {
+            let result = try XCTUnwrap(reader.resolution(at: hit))
+            XCTAssertTrue(result.block === item)
+            XCTAssertEqual(result.candidate.payload.text, "• Bold start ordinary body bold end")
+            XCTAssertEqual(capture(hit, preserveStructure: true)?.payload.text, "• **Bold start** ordinary body **bold end**")
+        }
+    }
+
+    func testGenericT3BulletItemsDoNotMergeEvenWithoutVerticalGaps() throws {
+        func item(_ title: String, y: CGFloat) -> Node {
+            let marker = Node("AXListMarker", "• ", frame: CGRect(x: 10, y: y, width: 10, height: 20))
+            let bold = Node("AXGroup", frame: CGRect(x: 25, y: y, width: 80, height: 20), children: [Node("AXStaticText", title, frame: CGRect(x: 25, y: y, width: 80, height: 20))])
+            bold.info.subrole = "AXStrongStyleGroup"
+            return Node("AXGroup", frame: CGRect(x: 10, y: y, width: 400, height: 20), children: [marker, bold, Node("AXStaticText", " body", frame: CGRect(x: 105, y: y, width: 60, height: 20))])
+        }
+        let first = item("First", y: 20), second = item("Second", y: 40)
+        let wrapper = Node("AXGroup", frame: CGRect(x: 10, y: 20, width: 400, height: 40), children: [first, second])
+        let reader = TextBlockReader<Node>(details: { $0.info }, parent: { $0.parent }, children: { $0.children }, equal: { $0 === $1 })
+        XCTAssertNil(reader.resolution(at: wrapper), "A list wrapper must not become one large paragraph")
+        for (node, expected) in [(first, "• First body"), (second, "• Second body")] {
+            for hit in [node.children[1].children[0], node.children[2]] {
+                let result = try XCTUnwrap(reader.resolution(at: hit))
+                XCTAssertTrue(result.block === node)
+                XCTAssertEqual(result.candidate.payload.text, expected)
+            }
+        }
+    }
+
     func testNestedNativeStrongAndEmphasisDoNotLoseEitherSemanticStyle() {
         let emphasis = Node("AXGroup", children: [Node("AXStaticText", "both")])
         emphasis.info.subrole = "AXEmphasisStyleGroup"

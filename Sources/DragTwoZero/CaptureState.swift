@@ -9,6 +9,7 @@ struct CaptureState {
         else if phase == .idle { phase = .armed }
     }
     mutating func begin() { if phase == .armed || phase == .ready { phase = .dragging } }
+    mutating func prepareSelectedText() { if phase == .armed { phase = .ready } }
     mutating func resolvePress() { if phase == .armed { phase = .resolving } }
     mutating func resolvedPress() { if phase == .resolving { phase = .armed } }
     mutating func select(enabled: Bool = true) { if enabled && phase == .armed { phase = .selecting } }

@@ -28,6 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let adapters: [SourceAdapter] = [AccessibleTextBlockAdapter(), AccessibleLinkAdapter()]
     var candidate: CaptureCandidate?
     var sourceSession = SelectionCaptureSession()
+    var selectedTextHint: CaptureCandidate?
+    var selectedTextPickupPending = false
+    var selectedTextGesturePrepared = false
     var allowsMarquee = false
     var scrollSelection: CaptureCandidate?
     var captured: CaptureCandidate?
@@ -56,18 +59,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let selectionSourceResolver: ([CaptureCandidate], [SourceAdapter], () -> Bool) -> [CaptureCandidate]?
     private let sourceLookupResolver: ((CGPoint, SelectionCaptureSession) -> SourceCaptureLookup)?
     private let destinationLookupResolver: ((CGPoint) -> InputTarget?)?
+    private let selectedTextPickupResolver: ((CGPoint, () -> Bool) -> SelectedTextLookup)?
     private let finalSelectionResolver: ((CGPoint, CGRect, AXUIElement?, SelectionScanControl) -> MarqueeDiscovery)?
 
     init(selectionSourceResolver: @escaping ([CaptureCandidate], [SourceAdapter], () -> Bool) -> [CaptureCandidate]? = SelectionSourceValidation.resolve,
          sourceLookupResolver: ((CGPoint, SelectionCaptureSession) -> SourceCaptureLookup)? = nil,
          finalSelectionResolver: ((CGPoint, CGRect, AXUIElement?, SelectionScanControl) -> MarqueeDiscovery)? = nil,
          backdropToneResolver: ((CGRect) async -> BackdropTone?)? = nil,
-         destinationLookupResolver: ((CGPoint) -> InputTarget?)? = nil) {
+         destinationLookupResolver: ((CGPoint) -> InputTarget?)? = nil,
+         selectedTextPickupResolver: ((CGPoint, () -> Bool) -> SelectedTextLookup)? = nil) {
         let sampler = BackdropAppearanceSampler()
         self.backdropToneResolver = backdropToneResolver ?? { await sampler.tone(in: $0) }
         self.selectionSourceResolver = selectionSourceResolver
         self.sourceLookupResolver = sourceLookupResolver
         self.destinationLookupResolver = destinationLookupResolver
+        self.selectedTextPickupResolver = selectedTextPickupResolver
         self.finalSelectionResolver = finalSelectionResolver
         super.init()
         bufferOverlay.onClose = { [weak self] in self?.closeBuffer() }
@@ -94,7 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let element = hitTest(point, diagnostic: { self.reportAcceptance(stage: "source-hit", reason: $0) }) else {
             return SourceCaptureLookup(candidate: nil, allowsMarquee: false)
         }
-        let selection = CapturePreferences.selectedTextDraggingEnabled ? AccessibleSelectedTextAdapter().lookup(at: element, session: session) : .none
+        let selection = CapturePreferences.selectedTextDraggingEnabled && !selectedTextGesturePrepared ? AccessibleSelectedTextAdapter().lookup(at: element, session: session) : .none
         if case .unavailable = selection, SourceTextPoint.contains(point, in: element) == false {
             return SourceCaptureLookup(candidate: nil, allowsMarquee: true)
         }
@@ -107,6 +113,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func destination(at point: CGPoint) -> InputTarget? {
         if let destinationLookupResolver { return destinationLookupResolver(point) }
         return InputTarget.find(at: point)
+    }
+
+    private func selectionPickup(at point: CGPoint, owner: AXUIElement? = nil, shouldStop: () -> Bool) -> SelectedTextLookup {
+        guard !shouldStop() else { return .unavailable }
+        if let selectedTextPickupResolver { return selectedTextPickupResolver(point, shouldStop) }
+        guard let hit = owner ?? hitTest(point) else { return .unavailable }
+        return AccessibleSelectedTextAdapter().pickup(at: hit, origin: point, shouldStop: shouldStop)
+    }
+
+    private func startHoverDiscovery(at point: CGPoint) {
+        probe(point)
+        selectionScan.cancel(); selectionScan = SelectionScanControl()
+        selectionQueryRunning = false; selectionCache = nil; selectionRoot = nil; selectionWindowFrame = nil
+        startSelectionDiscovery(at: point)
+    }
+
+    func prepareSelectedTextHint(at point: CGPoint) {
+        // Buffer is a control, not a source selection. Revealing its empty slot
+        // under the pointer must not cancel the new capture gesture.
+        if CapturePreferences.bufferEnabled, bufferOverlay.contains(point) {
+            selectedTextGesturePrepared = true
+            startHoverDiscovery(at: point)
+            return
+        }
+        let token = generation, work = CaptureCommitToken(timeout: 0.8)
+        sourceValidationToken?.cancel(); sourceValidationToken = work
+        selectedTextPickupPending = true
+        let expected: SelectedTextLookup = .none
+        commitValidation.validate(expected: expected, resolve: { [self] in
+            selectionPickup(at: point, shouldStop: { !work.isValid })
+        }, matches: { _, _ in true }, cancellation: work, isCurrent: { [weak self] in
+            self?.generation == token && self?.state.phase == .armed && self?.selectedTextPickupPending == true
+        }) { [weak self] lookup in
+            guard let self else { return }
+            self.selectedTextPickupPending = false; self.sourceValidationToken = nil
+            switch lookup {
+            case .selected(let selected):
+                self.selectedTextHint = selected
+                self.selectedTextGesturePrepared = true
+                self.state.prepareSelectedText()
+                self.overlay.highlight(nil)
+                self.overlay.show(at: self.pointer, text: "Drag selected text", symbol: selected.symbol, centeredOnPointer: true)
+                self.reportAcceptance(stage: "selected-text-pickup", reason: "hint-ready")
+            case .some(.none):
+                self.selectedTextGesturePrepared = true
+                self.startHoverDiscovery(at: self.pointer)
+            case .unavailable, nil:
+                self.reportAcceptance(stage: "selected-text-pickup", reason: "unavailable")
+                self.cancel()
+            }
+        }
+    }
+
+    private func grabSelectedTextHint(_ expected: CaptureCandidate, frame: CGRect, at point: CGPoint) {
+        validatingSource = true
+        let token = generation, work = CaptureCommitToken(timeout: 0.8)
+        sourceValidationToken?.cancel(); sourceValidationToken = work
+        commitValidation.validate(expected: expected, resolve: { [self] in
+            guard let owner = expected.anchor,
+                  case .selected(let current) = selectionPickup(at: point, owner: owner, shouldStop: { !work.isValid }) else { return nil }
+            return current
+        }, matches: { $0.matchesRetainedSource($1) }, cancellation: work, isCurrent: { [weak self] in
+            self?.generation == token && self?.state.phase == .dragging && self?.selectedTextHint != nil
+        }) { [weak self] current in
+            guard let self else { return }
+            self.validatingSource = false; self.sourceValidationToken = nil
+            guard let current else { self.cancel(); return }
+            self.captured = current
+            self.reportAcceptance(stage: "selected-text-pickup", reason: "accepted")
+            if CapturePreferences.bufferEnabled { self.bufferOverlay.showCaptureTarget(at: point) }
+            self.overlay.liftSelectedTextHint(from: frame, at: self.pointer)
+            self.probe(self.pointer)
+        }
     }
 
     private func blockSource(at point: CGPoint, shouldStop: () -> Bool = { false }) -> CaptureCandidate? {
@@ -288,7 +367,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     func probe(_ point: CGPoint) {
-        guard !validatingSource, !dropping else { return }
+        guard !validatingSource, !dropping, !selectedTextPickupPending else { return }
         if state.phase == .dragging, updateBufferDestination(at: point) { return }
         pendingProbe = point
         let dragging = state.phase == .dragging
@@ -1031,6 +1110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return shortcut.isHeld(observedKeyDown: shortcutKeyState.isPressed(for: shortcut))
     }
     func cancel() {
+        selectedTextHint = nil; selectedTextPickupPending = false; selectedTextGesturePrepared = false
         bufferNativePress = false
         nativeBufferDrag.cancel()
         if let id = bufferDragID, deliveryToken?.wasDispatched == true {
@@ -1112,6 +1192,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let held = shortcut.isHeld(flags: event.flags, event: event, type: type,
                                    observedKeyDown: shortcutKeyState.isPressed(for: shortcut))
         let matchingKey = (type == .keyDown || type == .keyUp) && shortcut.keyCode.map { Int64($0) == event.getIntegerValueField(.keyboardEventKeycode) } == true
+        if selectedTextHint != nil, !held, !dropping, state.phase != .dragging {
+            let consume = matchingKey || (swallowedMouseDown && [.leftMouseDown, .leftMouseDragged, .leftMouseUp].contains(type))
+            cancel()
+            if type == .leftMouseUp { swallowedMouseDown = false }
+            return consume
+        }
+        if selectedTextPickupPending, type == .leftMouseDown {
+            cancel(); return false
+        }
         // Repetition of the still-held consumed trigger is part of the same
         // gesture, not new user input. Every other key-down still cancels.
         if dropping && type == .keyDown && shortcutKeyState.consumesAutorepeat(for: shortcut, code: keyCode,
@@ -1202,10 +1291,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 overlay.beginCapture()
                 NSCursor.arrow.set()
                 // Resolve and measure the initial target before showing its glass.
-                probe(pointer)
-                selectionScan.cancel(); selectionScan = SelectionScanControl()
-                selectionQueryRunning = false; selectionCache = nil; selectionRoot = nil; selectionWindowFrame = nil
-                startSelectionDiscovery(at: pointer)
+                selectedTextGesturePrepared = false
+                if CapturePreferences.selectedTextDraggingEnabled { prepareSelectedTextHint(at: pointer) }
+                else { startHoverDiscovery(at: pointer) }
             }
             return shortcutKeyEvent
         }
@@ -1259,6 +1347,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !held { cancel(); return false }
             if type == .keyDown { cancel(); return keyCode == 53 }
             if type == .leftMouseDown {
+                if let selectedTextHint {
+                    guard let frame = overlay.dragHintFrame, frame.contains(event.location) else { cancel(); return false }
+                    pointer = event.location; swallowedMouseDown = true; state.begin()
+                    generation += 1
+                    grabSelectedTextHint(selectedTextHint, frame: frame, at: event.location)
+                    return true
+                }
                 let onSelection = selectionBlocks.contains { $0.visibleFrame?.contains(event.location) == true }
                 let onHint = overlay.dragHintFrame?.contains(event.location) == true
                 guard captured != nil, onSelection || onHint else { cancel(); return false }

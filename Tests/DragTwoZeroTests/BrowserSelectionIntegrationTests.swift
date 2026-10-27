@@ -5,6 +5,32 @@ import XCTest
 /// Opt in with a browser PID after opening scripts/fixtures/selected-text.html.
 /// Reads only that synthetic fixture; never inspects an unrelated document.
 final class BrowserSelectionIntegrationTests: XCTestCase {
+    func testSelectedTextHintReadsIdentityAndContentWithoutSourceOutlines() throws {
+        guard let value = ProcessInfo.processInfo.environment["DRAGTWOZERO_BROWSER_FIXTURE_PID"], let pid = Int32(value) else { throw XCTSkip("Requires the synthetic browser fixture") }
+        let app = AXUIElementCreateApplication(pid)
+        let window = try XCTUnwrap((attribute(app, kAXWindowsAttribute) as? [AXUIElement] ?? []).first {
+            (attribute($0, kAXTitleAttribute) as? String)?.hasPrefix("Drag selection test") == true
+        })
+        var remaining = 400
+        func find(_ node: AXUIElement, depth: Int = 0) -> AXUIElement? {
+            remaining -= 1; guard remaining > 0, depth < 30 else { return nil }
+            if attribute(node, kAXRoleAttribute) as? String == "AXWebArea" { return node }
+            for child in attribute(node, kAXChildrenAttribute) as? [AXUIElement] ?? [] { if let found = find(child, depth: depth + 1) { return found } }
+            return nil
+        }
+        let owner = try XCTUnwrap(find(window)), previous = UserDefaults.standard.object(forKey: CapturePreferences.structureKey)
+        defer { UserDefaults.standard.set(previous, forKey: CapturePreferences.structureKey) }
+        CapturePreferences.preserveStructure = false
+        let adapter = AccessibleSelectedTextAdapter()
+        guard case .selected(let selected) = adapter.pickup(at: owner, origin: CGPoint(x: 10, y: 10)),
+              case .selected(let current) = adapter.pickup(at: owner, origin: CGPoint(x: 500, y: 400)) else { return XCTFail("Readable selection must produce a hint payload") }
+        XCTAssertEqual(selected.payload.text, "Select this passage with emoji 🐈 and wrapped text across several line")
+        XCTAssertTrue(selected.visibleHighlightFrames.isEmpty)
+        XCTAssertNotNil(selected.selectedTextMarkerRange)
+        XCTAssertEqual(selected.selectedTextRange?.length, 70)
+        XCTAssertTrue(selected.matchesRetainedSource(current), "The hint position is not source identity")
+    }
+
     func testBrowserEqualBoundsKeepCanonicalBlockIdentity() throws {
         guard let value = ProcessInfo.processInfo.environment["DRAGTWOZERO_BROWSER_FIXTURE_PID"],
               let pid = Int32(value) else { throw XCTSkip("Requires the synthetic browser fixture") }
@@ -41,7 +67,7 @@ final class BrowserSelectionIntegrationTests: XCTestCase {
         }
     }
 
-    func testBrowserMarkerSelectionAcrossWrappedLines() throws {
+    func testBrowserHintKeepsSelectedFormattingAcrossWrappedLines() throws {
         guard let value = ProcessInfo.processInfo.environment["DRAGTWOZERO_BROWSER_FIXTURE_PID"],
               let pid = Int32(value) else { throw XCTSkip("Requires the synthetic browser fixture") }
         let oldPreference = UserDefaults.standard.object(forKey: CapturePreferences.structureKey)
@@ -104,30 +130,26 @@ final class BrowserSelectionIntegrationTests: XCTestCase {
         let supportedURL = linkURL.flatMap { ["http", "https"].contains($0.scheme?.lowercased() ?? "") ? $0:nil }
         if let supportedURL { XCTAssertEqual(supportedURL.absoluteString, "https://example.test/") }
         let expectedLink = supportedURL == nil ? "emoji 🐈" : "[emoji 🐈](https://example.test/)"
-        let candidate = try XCTUnwrap(AccessibleSelectedTextAdapter().candidate(at: owner))
+        let adapter = AccessibleSelectedTextAdapter()
+        guard case .selected(let candidate) = adapter.pickup(at: owner, origin: CGPoint(x: 100, y: 100)) else {
+            return XCTFail("Readable selected text must not depend on line geometry")
+        }
         XCTAssertNotNil(candidate.selectedTextMarkerRange)
         XCTAssertEqual(candidate.payload.text, "Select this \(expectedPassage) with \(expectedLink) and wrapped text across several line")
-        let frames = try XCTUnwrap(candidate.textFrames)
-        XCTAssertGreaterThan(frames.count, 1)
-        XCTAssertGreaterThan(frames[0].minX, frames[1].minX)
-        XCTAssertLessThan(frames[0].maxY, frames[1].maxY)
-        let firstPoint = CGPoint(x: frames[0].midX, y: frames[0].midY)
-        let hovered = try XCTUnwrap(AccessibleSelectedTextAdapter().candidate(at: owner, containing: firstPoint))
-        XCTAssertTrue(candidate.matchesCurrentSource(hovered, at: firstPoint))
+        XCTAssertTrue(candidate.visibleHighlightFrames.isEmpty, "The new interaction must not outline selected lines")
         func leaf(at node: AXUIElement, depth: Int = 0) -> AXUIElement? {
             guard depth < 25 else { return nil }
-            if attribute(node, kAXRoleAttribute) as? String == "AXStaticText", bounds(node)?.contains(firstPoint) == true { return node }
+            if attribute(node, kAXRoleAttribute) as? String == "AXStaticText",
+               (attribute(node, kAXValueAttribute) as? String ?? "").hasPrefix("Unselected prefix.") { return node }
             for child in attribute(node, kAXChildrenAttribute) as? [AXUIElement] ?? [] {
                 if let found = leaf(at: child, depth: depth + 1) { return found }
             }
             return nil
         }
         let hit = try XCTUnwrap(leaf(at: owner))
-        let fromHit = try XCTUnwrap(AccessibleSelectedTextAdapter().candidate(at: hit, containing: firstPoint))
-        XCTAssertTrue(candidate.matchesCurrentSource(fromHit, at: firstPoint))
-        let fresh = try XCTUnwrap(AccessibleSelectedTextAdapter().candidate(at: owner))
+        guard case .selected(let fromHit) = adapter.pickup(at: hit, origin: CGPoint(x: 300, y: 300)),
+              case .selected(let fresh) = adapter.pickup(at: owner, origin: CGPoint(x: 500, y: 400)) else { return XCTFail("Repeated pickup must retain the same selected source") }
+        XCTAssertTrue(candidate.matchesRetainedSource(fromHit))
         XCTAssertTrue(candidate.matchesRetainedSource(fresh))
-        let unselected = CGPoint(x: frames[1].minX + 1, y: frames[0].midY)
-        XCTAssertFalse(candidate.containsVisiblePoint(unselected))
     }
 }

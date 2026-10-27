@@ -108,7 +108,12 @@ struct TextBlockReader<Node> {
                       !runs.isEmpty else { break }
                 // Require surrounding prose; a standalone link remains a link capture.
                 if runs.contains(where: { !$0.link && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
-                   runs.count > 1, continuous(runs) { inferred = node }
+                   runs.count > 1, continuous(runs) {
+                    inferred = node
+                    // Electron may expose a list item as a generic group.
+                    // Its marker is a block boundary even without vertical gaps.
+                    if children(node).prefix(256).contains(where: { details($0).role == "AXListMarker" }) { break }
+                }
                 else if inferred != nil { break }
             } else if !["AXStaticText", "AXInlineTextBox", "AXLink", "AXImage"].contains(info.role) { break }
         }
@@ -155,17 +160,20 @@ struct TextBlockReader<Node> {
         guard budget > 0, depth < 24 else { return nil }
         let info = details(node)
         guard !info.isParagraph, !info.isEditable else { return nil }
-        // An image contributes no text. It must not break otherwise continuous
-        // prose in a generic browser wrapper, including when AX hits the image
-        // at that wrapper's midpoint during multiselect validation.
-        if info.role == "AXImage" { return [] }
+        // Images and list markers contribute no inline prose. They must not
+        // split supported runs within one otherwise continuous block.
+        if ["AXImage", "AXListMarker"].contains(info.role) { return [] }
         if ["AXStaticText", "AXInlineTextBox"].contains(info.role) {
             return [Run(text: info.value ?? info.title ?? "", frame: info.frame, link: false)]
         }
         if info.role == "AXLink" { return [Run(text: info.value ?? info.title ?? "link", frame: info.frame, link: true)] }
         guard ["AXGroup", "AXGenericElement", "AXUnknown"].contains(info.role) else { return nil }
+        let descendants = children(node)
+        guard descendants.count < budget else { budget = 0; return nil }
+        // A containing list/message must not flatten neighboring generic items.
+        if depth > 0, descendants.contains(where: { details($0).role == "AXListMarker" }) { return nil }
         var result: [Run] = []
-        for child in children(node) {
+        for child in descendants {
             guard let runs = inlineRuns(child, depth: depth + 1, budget: &budget) else { return nil }
             result += runs
         }

@@ -9,7 +9,7 @@ final class MultiselectDemoView: NSView {
         super.init(frame: frame)
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
-        setAccessibilityLabel(mode == .multiSelect ? "Multi-select demonstration" : "Select text, hold the shortcut, and drag the selection together")
+        setAccessibilityLabel(mode == .multiSelect ? "Multi-select demonstration" : "Select text and hold the shortcut to show a hint under the pointer. Grab and drag the hint; the shortcut can then be released. Escape cancels.")
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     private static let lightCursor: NSImage = {
@@ -139,17 +139,17 @@ final class MultiselectDemoView: NSView {
         for (index, rect) in selected.enumerated() {
             let progress = min(1, max(0, selection * 2 - CGFloat(index)))
             if progress <= 0 { continue }
-            let moving = NSRect(x: rect.minX + drag * 20, y: rect.minY + drag * 16, width: rect.width * progress, height: rect.height)
+            let moving = NSRect(x: rect.minX, y: rect.minY, width: rect.width * progress, height: rect.height)
             rounded(moving, color: .selectedTextBackgroundColor.withAlphaComponent(0.4 * fade))
-            if hover > 0 {
-                let border = NSBezierPath(roundedRect: moving, xRadius: 4, yRadius: 4)
-                NSColor.controlAccentColor.withAlphaComponent(hover * fade * 0.7).setStroke()
-                border.lineWidth = 1
-                border.stroke()
-            }
             rounded(NSRect(x: moving.minX, y: moving.minY + 8, width: moving.width, height: 5), color: .labelColor.withAlphaComponent(0.6 * fade), radius: 2)
         }
-        let cursor = NSRect(x: 170 + drag * 20, y: 51 + drag * 16, width: 22, height: 22)
+        let hint = NSRect(x: 104 + drag * 32, y: 36 + drag * 70, width: 132, height: 29)
+        if hover > 0 {
+            rounded(hint, color: .controlBackgroundColor.withAlphaComponent(hover * fade), radius: 9)
+            let title = NSAttributedString(string: "Selected text", attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.labelColor.withAlphaComponent(hover * fade)])
+            title.draw(at: NSPoint(x: hint.minX + 12, y: hint.minY + 6))
+        }
+        let cursor = NSRect(x: 170 + drag * 32, y: 51 + drag * 70, width: 22, height: 22)
         NSGraphicsContext.saveGraphicsState()
         let shadow = NSShadow()
         shadow.shadowColor = NSColor.black.withAlphaComponent(0.65)
@@ -158,7 +158,7 @@ final class MultiselectDemoView: NSView {
         shadow.set()
         Self.lightCursor.draw(in: cursor, from: .zero, operation: .sourceOver, fraction: hover * fade, respectFlipped: true, hints: nil)
         NSGraphicsContext.restoreGraphicsState()
-        let caption = time < 1.2 ? "Select text first" : (time < 2.8 ? "Hold shortcut and hover selection" : "Drag the selection together")
+        let caption = time < 1.2 ? "Select text first" : (time < 2.8 ? "Hold shortcut to show the hint" : "Grab the hint, then release shortcut")
         let text = NSAttributedString(string: caption, attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: NSColor.secondaryLabelColor])
         text.draw(at: NSPoint(x: (bounds.width - text.size().width) / 2, y: 169))
     }

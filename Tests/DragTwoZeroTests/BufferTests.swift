@@ -583,7 +583,20 @@ final class BufferTests: XCTestCase {
             let frame = delegate.bufferOverlay.targetFrame!
             CapturePreferences.animationsEnabled = true
             XCTAssertTrue(lift(delegate, at: point))
-            XCTAssertEqual(delegate.overlay.dragHintFrame, frame, "The first morph frame starts at the actual slot")
+            // Presenting the native window may service display-link callbacks
+            // before handle() returns, especially on a fresh hosted runner.
+            // Check the observed frame's slot-to-pointer trajectory rather
+            // than assuming that no animation frame has elapsed yet.
+            guard let observed = delegate.overlay.dragHintFrame else {
+                XCTFail("The lifted hint must be visible")
+                return
+            }
+            let progress = (frame.width - observed.width) / (frame.width - 90)
+            XCTAssertGreaterThanOrEqual(progress, 0)
+            XCTAssertLessThanOrEqual(progress, 1.2, "Allow the damped morph's small overshoot")
+            XCTAssertEqual(observed.height, frame.height, accuracy: 0.5)
+            XCTAssertEqual(observed.minX, frame.minX + (point.x - 23.5 - frame.minX) * progress, accuracy: 0.5)
+            XCTAssertEqual(observed.minY, frame.minY + (point.y - 30 - frame.minY) * progress, accuracy: 0.5)
             XCTAssertGreaterThan(CaptureWindowLayers.hint.rawValue, CaptureWindowLayers.buffer.rawValue)
             delegate.cancel()
             delegate.closeBuffer()

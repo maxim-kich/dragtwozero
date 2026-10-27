@@ -4,13 +4,13 @@
 
 Drag text and links between Mac apps. Hold a shortcut, pick a block, and drop it into a supported input at its existing caret.
 
-**Apple Silicon only · Support focused on the latest macOS**
+**Apple Silicon only · Tested on macOS 26.4.1**
 
 [Website](https://dragtwozero.com) · [Releases](https://github.com/maxim-kich/dragtwozero/releases) · [Legal & Privacy](https://dragtwozero.com/legal#app-privacy)
 
-The app is **Drag 2.0 (Alpha)**. Version **0.0.4** is in preparation; no public app download is available yet.
+The app is **Drag 2.0 (Alpha)**. [Download version **0.0.4**](https://github.com/maxim-kich/dragtwozero/releases/tag/v0.0.4), open the DMG, drag the app into Applications, then open it.
 
-The installation minimum is **macOS 13**. Official support is limited to the latest major macOS release once validated; older versions are best-effort and may work, but are unsupported. This candidate has been tested on **macOS 26.4.1**; validation on the current major release, macOS 27, is pending. Liquid Glass requires macOS 26 or later.
+The installation minimum is **macOS 13**. Official support is limited to the latest major macOS release once validated; older versions are best-effort and may work, but are unsupported. Version 0.0.4 has been tested locally on **macOS 26.4.1**; validation on the current major release, macOS 27, is pending. Liquid Glass requires macOS 26 or later.
 
 ## Use
 

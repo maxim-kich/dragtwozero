@@ -64,7 +64,7 @@ After notarization/stapling, packaging creates the final ZIP, then `generate-upd
 
 Only release metadata, the signed feed, and the user-approved archive are requested. GitHub and its download CDN receive normal connection information. No captured text, URLs, clipboard data, screenshots, usage analytics, system profile, extra feed parameters, or installation identifiers are sent. Both scheduled and manual checks use Sparkle’s manual API with the quiet custom driver: Sparkle’s background API otherwise creates a persistent phased-rollout identifier even for unphased feeds. Phased rollouts are rejected before downloading. The updater uses a fixed generic User-Agent, does not download release notes, and disables JavaScript and system profiling even if old Sparkle preferences exist. Check preference/time and notification/version state remain local; Sparkle keeps its normal local cache and installer state.
 
-The bundled privacy notice reflects this implementation. The hosted website/legal pages were not deployed as part of this work and need their own approved update before public distribution.
+The bundled privacy notice and [hosted app privacy notice](https://dragtwozero.com/legal#app-privacy) describe this implementation. Keep both aligned when updater behavior changes.
 
 ## Isolated local validation
 

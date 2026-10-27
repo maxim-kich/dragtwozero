@@ -103,3 +103,5 @@ Use a disposable, initially empty T3 composer and synthetic source text; never s
 - Preserve original opaque selection markers through focus and dispatch. A different marker selection with the same legacy index must reject; cancellation must stop stationary discovery. Unknown controls, attachments, incomplete paragraph trees or changing snapshots must not produce a positive paragraph receipt.
 
 Keep recordings scoped to the disposable source, destination and product windows. Retain failed attempts and harness errors separately from passing regression cases.
+
+- Restart recovery: seed a named pasteboard with current text/HTML plus a modern or legacy temporary marker whose owning process no longer exists. A subsequent confirmed drop must restore that visible copy and all formats, stripping stale markers. A still-live valid owner must continue carrying its original backup; a newer revision with stale metadata must never be cleared. Repeat the orphan-marker case through an actual Buffer drop.

@@ -25,6 +25,13 @@ final class CaptureClipboard {
     /// Reading promised data may take time. Never modify the clipboard here.
     static func prepare(board: NSPasteboard = .general) -> Preparation {
         let originalChange = board.changeCount
+        func visibleContents() -> [[NSPasteboard.PasteboardType: Data]] {
+            (board.pasteboardItems ?? []).map { item in
+                Dictionary(uniqueKeysWithValues: item.types.filter { $0 != marker && $0 != retainedMarker && $0 != legacyMarker }.compactMap { type in
+                    item.data(forType: type).map { (type, $0) }
+                })
+            }
+        }
         let saved: [[NSPasteboard.PasteboardType: Data]]
         if (board.types?.contains(marker) == true || board.types?.contains(legacyMarker) == true) && board.types?.contains(retainedMarker) != true {
             // A cancelled posted paste may still be waiting to restore. Carry
@@ -36,13 +43,12 @@ final class CaptureClipboard {
             ownerLock.unlock()
             saved = owner.flatMap {
                 $0.prepared.board.name == board.name && $0.isCurrent && board.changeCount == originalChange ? $0.prepared.saved : nil
-            } ?? []
+            // After a restart (or an externally rewritten revision), the old
+            // in-memory backup is unavailable. Preserve today's visible copy,
+            // without stale metadata, rather than restoring an empty board.
+            } ?? visibleContents()
         } else {
-            saved = (board.pasteboardItems ?? []).map { item in
-                Dictionary(uniqueKeysWithValues: item.types.filter { $0 != marker && $0 != retainedMarker && $0 != legacyMarker }.compactMap { type in
-                    item.data(forType: type).map { (type, $0) }
-                })
-            }
+            saved = visibleContents()
         }
         return Preparation(board: board, saved: saved, originalChange: originalChange)
     }

@@ -3,6 +3,41 @@ import XCTest
 @testable import DragTwoZero
 
 final class CaptureClipboardTests: XCTestCase {
+    func testRestartedAppPreservesVisibleOrphanPayloadAndAllFormats() {
+        for staleMarker in [CaptureClipboard.marker, .init("com.maximkich.drop-to-t3.temporary-context")] {
+            let board = NSPasteboard.withUniqueName()
+            defer { board.releaseGlobally() }
+            let item = NSPasteboardItem()
+            item.setString("Visible copy from previous process", forType: .string)
+            item.setData(Data("<b>Visible copy</b>".utf8), forType: .html)
+            item.setString("previous-process", forType: staleMarker)
+            board.writeObjects([item])
+            let next = CaptureClipboard(text: "New payload", board: board)
+            next.finish(confirmed: true)
+            XCTAssertEqual(board.string(forType: .string), "Visible copy from previous process")
+            XCTAssertEqual(board.data(forType: .html), Data("<b>Visible copy</b>".utf8))
+            XCTAssertNil(board.string(forType: staleMarker))
+        }
+    }
+
+    func testAStaleMarkerOnANewerRevisionCannotClearThatNewerCopy() {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        board.setString("Original", forType: .string)
+        let old = CaptureClipboard(text: "Unconfirmed", board: board)
+        let marker = board.string(forType: CaptureClipboard.marker)!
+        board.clearContents()
+        let newer = NSPasteboardItem()
+        newer.setString("Newer visible copy", forType: .string)
+        newer.setString(marker, forType: CaptureClipboard.marker)
+        board.writeObjects([newer])
+        XCTAssertFalse(old.isCurrent)
+        let next = CaptureClipboard(text: "Next payload", board: board)
+        old.finish(confirmed: true)
+        next.finish(confirmed: true)
+        XCTAssertEqual(board.string(forType: .string), "Newer visible copy")
+        XCTAssertNil(board.string(forType: CaptureClipboard.marker))
+    }
     func testSuccessRestoresUserClipboardAndRemovesMarker() {
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally() }

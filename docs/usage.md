@@ -18,7 +18,7 @@ The source content stays in place. Drag 2.0 never submits the destination field.
 
 Change the trigger shortcut, formatting, appearance, haptics, and animations in Settings. Links and emphasis depend on the attributes exposed by the source app and your formatting preference. Motion respects Reduce Motion.
 
-**Launch at login** is also in **Settings → General**. It uses the macOS login-item setting, so changes made in System Settings are reflected in the app. If macOS requires approval, use **Open Login Items** to finish enabling it. Turning it off removes the login item; it does not quit the current session. You still need to open the app once after installation.
+**Launch at login** is also in **Settings → General**. It uses the macOS login-item setting, so changes made in System Settings are reflected in the app. If macOS requires approval when you turn it on, Drag opens **System Settings → Login Items** so you can finish enabling it. The approval button remains available if you return before approving. Turning it off removes the login item; it does not quit the current session. You still need to open the app once after installation.
 
 **Settings pages:** General contains activation, Accessibility, launch at login, the shortcut and haptics. Behaviour contains Preserve content structure and Overwrite clipboard. Buffer contains its enable switch and position. Appearance contains visual controls and Hide app icon from Dock. Experimental contains Multi-select and Drag selected text.
 

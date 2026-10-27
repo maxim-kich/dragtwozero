@@ -56,7 +56,7 @@ final class SettingsNavigationTests: XCTestCase {
     }
 
     @MainActor
-    func testAccessibilityReplacesItsButtonWithACenteredGreenStatusAndReversesOnRevocation() throws {
+    func testAccessibilityReplacesItsButtonWithARightAlignedGreenStatusAndReversesOnRevocation() throws {
         _ = NSApplication.shared
         var granted = false
         let controller = SettingsWindowController(onStructureChange: {}, onAppearanceChange: {},
@@ -73,7 +73,10 @@ final class SettingsNavigationTests: XCTestCase {
         XCTAssertFalse(status.isHidden)
         XCTAssertEqual(status.stringValue, "Allowed")
         XCTAssertEqual(status.textColor, .systemGreen)
-        XCTAssertEqual(status.frame.midX, button.frame.midX, accuracy: 0.5)
+        XCTAssertEqual(status.alignment, .right)
+        let trailingSpace = try XCTUnwrap(status.superview).bounds.maxX - status.frame.maxX
+        XCTAssertGreaterThanOrEqual(trailingSpace, 12)
+        XCTAssertLessThanOrEqual(trailingSpace, 20, "Allowed belongs at the trailing edge of the row")
         XCTAssertEqual(status.frame.midY, button.frame.midY, accuracy: 0.5)
         granted = false
         controller.perform(NSSelectorFromString("refreshAccessibility"))

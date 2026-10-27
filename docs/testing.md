@@ -91,3 +91,15 @@ Record baseline failures and fixed results separately, including the app commit,
 - Open Notification Center, hover its controls and notifications, then hover Dock items. Drag must not capture text from an app behind those controls. Unknown overlays, floating dialogs, unreadable AX hits and timed-out checks remain blocked.
 - Repeat after moving/resizing the target, switching Spaces and using a secondary display (including a display above or left of the primary). Authorization is per hit and per window ID; only verified process identities are cached.
 - No Screen Recording permission, app-specific settings reset or system-process restart should be needed. Native verification in the affected account remains separate from the deterministic window-policy tests.
+
+## T3 paragraph and stationary-drop regression fixtures
+
+Use a disposable, initially empty T3 composer and synthetic source text; never send the test draft.
+
+- Exercise direct and Buffer drops into an empty composer, a populated single line with a saved middle caret, and the start of the second paragraph. Hold the drag pointer still over the input before release: a late browser hit-test result must recover without another mouse event.
+- Paste `QA-T3 first line\nSecond  line\n\nLast line`, combining Unicode, links and styled text. T3 can omit paragraph separators from legacy caret indexes, expose a placeholder line feed in an empty input, and omit real blank lines from AXValue. Confirm the whole owned paragraph structure rather than trimming or comparing an expected-length prefix.
+- Measure clipboard restoration **before** using the destination's Copy command as an independent content oracle. Copy the synthetic composer after the receipt deadline and compare its complete exported text, including Markdown, double spaces, blank lines and exact UTF-16 Unicode. Keep pre-test clipboard data only in driver memory and restore only a revision the driver still owns.
+- Explicitly reopen Buffer after each accepted drop and assert an empty slot. Escape must retain the item and leave the input unchanged. A newer copy after insertion must survive pending clipboard cleanup.
+- Preserve original opaque selection markers through focus and dispatch. A different marker selection with the same legacy index must reject; cancellation must stop stationary discovery. Unknown controls, attachments, incomplete paragraph trees or changing snapshots must not produce a positive paragraph receipt.
+
+Keep recordings scoped to the disposable source, destination and product windows. Retain failed attempts and harness errors separately from passing regression cases.

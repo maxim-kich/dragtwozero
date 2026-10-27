@@ -114,12 +114,19 @@ final class Delivery {
                             guard valid() else { diagnostic("paste-event-creation-invalidated"); finish(false); return }
                             guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: true) else { diagnostic("paste-keydown-event-unavailable"); finish(false); return }
                             guard let up = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: false) else { diagnostic("paste-keyup-event-unavailable"); finish(false); return }
+                            var paragraphReceipt: EditorParagraphReceipt.Before?
                             let clipboard = PasteCommitTransaction.commit(expected: expected, readState: {
                                 guard Self.currentTarget(target, valid: valid, diagnostic: diagnostic) else { return nil }
                                 guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.app.processIdentifier else { diagnostic("commit-frontmost-changed"); return nil }
                                 guard let focused = axElement(attribute(appElement, kAXFocusedUIElementAttribute)) else { diagnostic("commit-focus-unavailable"); return nil }
                                 guard CFEqual(focused, editor) else { diagnostic("commit-focus-changed"); return nil }
                                 guard valid(), let state = Self.insertionState(editor, diagnostic: diagnostic), valid() else { return nil }
+                                guard Self.authorizedMarkersMatch(target, editor: editor, diagnostic: diagnostic) else { return nil }
+                                if let markers = target.selectionMarkers {
+                                    paragraphReceipt = EditorParagraphReceipt.before(editor, selection: markers, rawValue: state.value, valid: valid)
+                                }
+                                guard valid(), Self.insertionState(editor, diagnostic: diagnostic) == state,
+                                      Self.authorizedMarkersMatch(target, editor: editor, diagnostic: diagnostic) else { return nil }
                                 return state
                             }, prepareClipboard: {
                                 CaptureClipboard.prepare()
@@ -146,7 +153,7 @@ final class Delivery {
                             }, diagnostic: diagnostic)
                             guard let clipboard else { diagnostic("commit-rejected"); finish(false); return }
                             verify(payload: payload, element: editor, before: expected, clipboard: clipboard,
-                                   valid: receiptValid, diagnostic: diagnostic, finish: finish)
+                                   paragraphReceipt: paragraphReceipt, valid: receiptValid, diagnostic: diagnostic, finish: finish)
                         }
                     }
                 }
@@ -161,6 +168,15 @@ final class Delivery {
         let expected = EditorInsertionState(location: range.location, length: range.length, value: value)
         return DeliveryGuardDiagnostics.selectionMatches(expected: expected,
             read: { insertionState(target.element, diagnostic: diagnostic) }, diagnostic: diagnostic)
+            && authorizedMarkersMatch(target, editor: target.element, diagnostic: diagnostic)
+    }
+
+    private static func authorizedMarkersMatch(_ target: InputTarget, editor: AXUIElement, diagnostic: (StaticString) -> Void) -> Bool {
+        guard let expected = target.selectionMarkers else { return true }
+        guard SelectedTextMarkers.sameRange(expected, EditorParagraphReceipt.selectedRange(editor)) else {
+            diagnostic("authorized-marker-selection-changed-or-unavailable"); return false
+        }
+        return true
     }
 
     private static func currentTarget(_ target: InputTarget, valid: () -> Bool, diagnostic: (StaticString) -> Void) -> Bool {
@@ -175,6 +191,7 @@ final class Delivery {
     }
 
     private func verify(payload: CapturePayload, element: AXUIElement, before: EditorInsertionState?, clipboard: CaptureClipboard?,
+                        paragraphReceipt: EditorParagraphReceipt.Before? = nil,
                         valid: @escaping () -> Bool,
                         diagnostic: @escaping (StaticString) -> Void, finish: @escaping (Bool) -> Void) {
         queue.asyncAfter(deadline: .now() + 0.1) { [self] in
@@ -189,24 +206,34 @@ final class Delivery {
             // Read the exact editor we wrote to. Its ancestors may change as a
             // rich editor lays out inserted content; that must not invalidate
             // an otherwise exact receipt. Never resolve or write a new target.
-            let raw = attribute(element, kAXValueAttribute)
-            let after = (raw as? String) ?? (before == nil ? (raw as? NSNumber)?.stringValue : nil)
-            var confirmed = before == nil ? after == payload.text : after.map { before?.confirmsLineNormalizedInsertion(of: payload.text, observed: $0) ?? false } ?? false
-            // AXValue can lag or omit rich editor descendants. A full range
-            // read from this exact editor is an independent positive receipt.
-            // Never inspect a prefix of expected length or another editor.
-            if !confirmed, let before, valid(), let fullText = Self.fullEditorText(element, valid: valid) {
-                confirmed = before.confirmsLineNormalizedInsertion(of: payload.text, observed: fullText)
-            }
-            if !confirmed, let before, valid(), let completeText = EditorReceiptText.read(element, valid: valid) {
-                confirmed = before.confirmsInsertion(of: payload.text, observed: completeText)
+            var confirmed = false
+            if let paragraphReceipt {
+                // Once this editor proves its paragraph model, a flattened AX
+                // string cannot override it and hide lost/extra real blank lines.
+                if let text = EditorParagraphReceipt.text(element, valid: valid) {
+                    confirmed = paragraphReceipt.confirms(payload.text, text: text.text, markup: text.markup)
+                } else if let text = EditorReceiptText.read(element, valid: valid) {
+                    confirmed = paragraphReceipt.state.confirmsInsertion(of: payload.text, observed: text)
+                }
+            } else {
+                let raw = attribute(element, kAXValueAttribute)
+                let after = (raw as? String) ?? (before == nil ? (raw as? NSNumber)?.stringValue : nil)
+                confirmed = before == nil ? after == payload.text : after.map { before?.confirmsLineNormalizedInsertion(of: payload.text, observed: $0) ?? false } ?? false
+                // Full reads stay on this exact editor, never a matching prefix
+                // or another control elsewhere in the target application.
+                if !confirmed, let before, valid(), let fullText = Self.fullEditorText(element, valid: valid) {
+                    confirmed = before.confirmsLineNormalizedInsertion(of: payload.text, observed: fullText)
+                }
+                if !confirmed, let before, valid(), let text = EditorReceiptText.read(element, valid: valid) {
+                    confirmed = before.confirmsInsertion(of: payload.text, observed: text)
+                }
             }
             guard valid() else { complete(false); return }
             // Read-only verification can use the whole admission deadline. A
             // slow recipient must not see the old clipboard after two seconds.
             if !confirmed && clipboard?.isCurrent != false {
                 verify(payload: payload, element: element, before: before, clipboard: clipboard,
-                       valid: valid, diagnostic: diagnostic, finish: finish)
+                       paragraphReceipt: paragraphReceipt, valid: valid, diagnostic: diagnostic, finish: finish)
             } else {
                 diagnostic(confirmed ? "delivery-confirmed" : "delivery-posted-but-unconfirmed")
                 complete(confirmed)

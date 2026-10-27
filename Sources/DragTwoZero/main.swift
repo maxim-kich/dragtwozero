@@ -55,16 +55,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var pendingPress: PendingPress?
     private let selectionSourceResolver: ([CaptureCandidate], [SourceAdapter], () -> Bool) -> [CaptureCandidate]?
     private let sourceLookupResolver: ((CGPoint, SelectionCaptureSession) -> SourceCaptureLookup)?
+    private let destinationLookupResolver: ((CGPoint) -> InputTarget?)?
     private let finalSelectionResolver: ((CGPoint, CGRect, AXUIElement?, SelectionScanControl) -> MarqueeDiscovery)?
 
     init(selectionSourceResolver: @escaping ([CaptureCandidate], [SourceAdapter], () -> Bool) -> [CaptureCandidate]? = SelectionSourceValidation.resolve,
          sourceLookupResolver: ((CGPoint, SelectionCaptureSession) -> SourceCaptureLookup)? = nil,
          finalSelectionResolver: ((CGPoint, CGRect, AXUIElement?, SelectionScanControl) -> MarqueeDiscovery)? = nil,
-         backdropToneResolver: ((CGRect) async -> BackdropTone?)? = nil) {
+         backdropToneResolver: ((CGRect) async -> BackdropTone?)? = nil,
+         destinationLookupResolver: ((CGPoint) -> InputTarget?)? = nil) {
         let sampler = BackdropAppearanceSampler()
         self.backdropToneResolver = backdropToneResolver ?? { await sampler.tone(in: $0) }
         self.selectionSourceResolver = selectionSourceResolver
         self.sourceLookupResolver = sourceLookupResolver
+        self.destinationLookupResolver = destinationLookupResolver
         self.finalSelectionResolver = finalSelectionResolver
         super.init()
         bufferOverlay.onClose = { [weak self] in self?.closeBuffer() }
@@ -101,6 +104,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func destination(at point: CGPoint) -> InputTarget? {
+        if let destinationLookupResolver { return destinationLookupResolver(point) }
+        return InputTarget.find(at: point)
+    }
+
     private func blockSource(at point: CGPoint, shouldStop: () -> Bool = { false }) -> CaptureCandidate? {
         guard !shouldStop() else { return nil }
         return hitTest(point).flatMap {
@@ -119,11 +127,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func scheduleHoverRefresh() {
-        guard state.phase == .armed, probeWakeup == nil else { return }
+        guard (state.phase == .armed || state.phase == .dragging), !dropping,
+              !nativeBufferDrag.releasePending, probeWakeup == nil else { return }
         let token = generation
         let wakeup = DispatchWorkItem { [weak self] in
-            guard let self, token == self.generation, self.state.phase == .armed else { return }
+            guard let self, token == self.generation,
+                  self.state.phase == .armed || self.state.phase == .dragging else { return }
             self.probeWakeup = nil
+            guard !self.dropping, !self.nativeBufferDrag.releasePending else { return }
             self.probe(self.pointer)
         }
         probeWakeup = wakeup
@@ -330,7 +341,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         probeQueue.async { [self] in
             let lookup = dragging ? nil : self.source(at: point, session: session)
             let source = lookup?.candidate
-            let destination = dragging ? InputTarget.find(at: point).flatMap {
+            let destination = dragging ? self.destination(at: point).flatMap {
                 nativeDragging && ($0.cellValueElement != nil || $0.googleDocsDocument != nil) ? nil : $0
             } : nil
             Task { [self] in

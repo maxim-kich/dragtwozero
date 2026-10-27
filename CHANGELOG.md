@@ -2,6 +2,8 @@
 
 ## 0.0.4 — Release candidate
 
+- Add optional Launch at login in onboarding and General; reorganize Settings into Behaviour, Buffer, Appearance and Experimental pages.
+
 - Pick up selected text from a hint under the pointer without requiring source outlines. After grabbing the hint, the shortcut can be released while dragging; releasing it before grabbing cancels.
 - Keep bold labels and body text together in generic Accessibility bullet items without merging neighboring items.
 - Add selection-hint, cancellation, stale-result, display-edge and list-item regression checks, and update the experimental help.

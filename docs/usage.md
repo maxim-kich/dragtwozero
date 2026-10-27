@@ -4,7 +4,7 @@
 
 ## First launch
 
-Open **Drag 2.0 (Alpha)** and follow the six-step introduction. On the permission step, use the Accessibility control and enable the app in **System Settings → Privacy & Security → Accessibility**. Return to the introduction once access is granted. The guide also covers the shortcut, optional Buffer, and update notifications.
+Open **Drag 2.0 (Alpha)** and follow the seven-step introduction. On the permission step, use the Accessibility control and enable the app in **System Settings → Privacy & Security → Accessibility**. Return to the introduction once access is granted. After Accessibility, choose whether to **Launch at login**. This is optional and remains off unless you enable it. The guide also covers the shortcut, optional Buffer, and update notifications.
 
 After setup, Drag 2.0 lives in the menu bar. Open its menu for **Settings**, **Turn Off / Turn On**, or **Quit**.
 
@@ -18,9 +18,13 @@ The source content stays in place. Drag 2.0 never submits the destination field.
 
 Change the trigger shortcut, formatting, appearance, haptics, and animations in Settings. Links and emphasis depend on the attributes exposed by the source app and your formatting preference. Motion respects Reduce Motion.
 
+**Launch at login** is also in **Settings → General**. It uses the macOS login-item setting, so changes made in System Settings are reflected in the app. If macOS requires approval, use **Open Login Items** to finish enabling it. Turning it off removes the login item; it does not quit the current session. You still need to open the app once after installation.
+
+**Settings pages:** General contains activation, Accessibility, launch at login, the shortcut and haptics. Behaviour contains Preserve content structure and Overwrite clipboard. Buffer contains its enable switch and position. Appearance contains visual controls and Hide app icon from Dock. Experimental contains Multi-select and Drag selected text.
+
 ## Buffer
 
-Using one screen, or need a place for your drag to rest? Enable the optional **Buffer** step in onboarding, before the updates question, or use **Settings → General → Buffer** to hold one item for later. Buffer is off by default.
+Using one screen, or need a place for your drag to rest? Enable the optional **Buffer** step in onboarding, before the updates question, or use **Settings → Buffer** to hold one item for later. Buffer is off by default.
 
 1. Hold the trigger shortcut to reveal **Buffer**, including over empty space.
 2. Drag a captured item into its recessed slot, then release the shortcut.
@@ -34,7 +38,7 @@ An invalid or cancelled drop keeps the item. Buffer inserts through the same sav
 
 ## Experimental features
 
-Both features are in **Settings → General → Experimental** and are off by default.
+Both features are in **Settings → Experimental** and are off by default.
 
 **Multi-select:** hold the shortcut and drag from empty space across blocks. Release the shortcut while still pressing the mouse or trackpad to drag the group. If you release the mouse first, keep holding the shortcut and click a highlighted block or the hint to start dragging. Releasing the shortcut before starting that drag clears the group.
 
@@ -52,7 +56,7 @@ With Drag selected text enabled, an unreadable selection can still prevent captu
 
 In **Settings → About**, use **Check for Updates → Download & Install → Restart**. Each action requires your confirmation. Finish or cancel an active capture/transfer and use or explicitly clear Buffer before restarting. Cancel stops the pending update. Periodic checks can be disabled with **Notify about updates**; manual checks remain available.
 
-**Overwrite clipboard** in General is off by default. Buffer and direct highlight drops temporarily use the clipboard, restoring its previous contents after confirmed insertion when Drag 2.0 still owns that clipboard revision. Parking an item in Buffer does not change the clipboard. With the option on, confirmed delivered content remains available to paste. A newer copy always takes priority. An unconfirmed paste can leave the captured content on the clipboard for late readers and recovery; check the destination before retrying.
+**Overwrite clipboard** in Behaviour is off by default. Buffer and direct highlight drops temporarily use the clipboard, restoring its previous contents after confirmed insertion when Drag 2.0 still owns that clipboard revision. Parking an item in Buffer does not change the clipboard. With the option on, confirmed delivered content remains available to paste. A newer copy always takes priority. An unconfirmed paste can leave the captured content on the clipboard for late readers and recovery; check the destination before retrying.
 
 Captured content is processed locally. Optional Screen Recording permission is used for small brightness samples to adapt glass contrast; no frames are saved or uploaded. Update checks contact GitHub and can be disabled in About. See [Legal & Privacy](https://dragtwozero.com/legal#app-privacy).
 

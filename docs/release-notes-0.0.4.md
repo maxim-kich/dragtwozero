@@ -6,6 +6,8 @@ This candidate changes experimental selected-text pickup and keeps bold labels w
 - Selected-text pickup reads and revalidates the actual selected characters and range identity without requiring an outline for every selected line. A missing or changed selection is rejected rather than silently replaced with a larger block.
 - Capture bold labels, ordinary text and trailing bold words together when a source exposes a bullet item as a generic Accessibility group. Keep adjacent items separate and preserve the existing read budgets.
 - Update the selected-text help and usage guide. Both experimental features remain off by default.
+- Add optional Launch at login after Accessibility in the seven-step introduction and in General settings. Reflect macOS login-item status, approval requirements and failed changes.
+- Reorganize Settings into General, Behaviour, Buffer, Appearance, Experimental and About. Show green Allowed in place of the Accessibility button after permission is granted; separate Buffer controls and move the Dock option to the end of Appearance.
 
 The existing saved-caret delivery, clipboard ownership and Buffer recovery rules remain: confirmed insertion consumes the matching Buffer item and restores the previous clipboard when Overwrite clipboard is off. A newer copy wins. Unconfirmed insertion preserves recovery content and can leave captured content on the clipboard; check the destination before retrying.
 

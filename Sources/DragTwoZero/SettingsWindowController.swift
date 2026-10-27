@@ -24,6 +24,22 @@ private final class SettingsPageView: NSView {
     override var isFlipped: Bool { true }
 }
 
+enum SettingsSection: String, CaseIterable {
+    case general = "General", behaviour = "Behaviour", buffer = "Buffer"
+    case appearance = "Appearance", experimental = "Experimental", about = "About"
+
+    var symbol: String {
+        switch self {
+        case .general: return "gearshape"
+        case .behaviour: return "slider.horizontal.3"
+        case .buffer: return "tray"
+        case .appearance: return "paintpalette"
+        case .experimental: return "flask"
+        case .about: return "info.circle"
+        }
+    }
+}
+
 final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate {
     private let onStructureChange: () -> Void
     private let onAppearanceChange: () -> Void
@@ -35,6 +51,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
     private let isActive: () -> Bool
     private let activationSwitch = NSSwitch()
     private let dockIconSwitch = NSSwitch()
+    private let launchAtLoginView: LaunchAtLoginView
+    private let isAccessibilityGranted: () -> Bool
+    private let accessibilityButton = NSButton(title: "Open System Settings…", target: nil, action: nil)
     private let accessibilityStatus = NSTextField(labelWithString: "")
     private var accessibilityTimer: Timer?
     private let multiselectInfoPopover = NSPopover()
@@ -48,14 +67,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
     private let debugLogStatus = NSTextField(labelWithString: "Local diagnostics only. Nothing is sent automatically.")
     private let animations = AnimationSettingsView()
     private let navigation = NSTableView()
-    private let pageNames = ["General", "Appearance", "About"]
+    private let pageNames = SettingsSection.allCases.map(\.rawValue)
     private var pages: [NSView] = []
     private var pageScrollViews: [NSScrollView] = []
     private var hasLaidOutPages = false
 
     init(onStructureChange: @escaping () -> Void, onAppearanceChange: @escaping () -> Void,
          isActive: @escaping () -> Bool, onActivationChange: @escaping (Bool) -> Void,
-         onBufferChange: @escaping () -> Void = {}) {
+         onBufferChange: @escaping () -> Void = {},
+         launchAtLogin: LaunchAtLoginController = LaunchAtLoginController(),
+         isAccessibilityGranted: @escaping () -> Bool = AXIsProcessTrusted) {
+        self.isAccessibilityGranted = isAccessibilityGranted
+        self.launchAtLoginView = LaunchAtLoginView(frame: NSRect(x: 0, y: 0, width: 592, height: 64), controller: launchAtLogin)
         self.isActive = isActive
         self.onActivationChange = onActivationChange
         self.onStructureChange = onStructureChange
@@ -90,7 +113,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
 
     func presentAbout() {
         present()
-        navigation.selectRowIndexes(IndexSet(integer: 2), byExtendingSelection: false)
+        navigation.selectRowIndexes(IndexSet(integer: SettingsSection.allCases.firstIndex(of: .about)!), byExtendingSelection: false)
         tableViewSelectionDidChange(Notification(name: NSTableView.selectionDidChangeNotification))
     }
 
@@ -208,7 +231,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         navigation.delegate = self
         scroll.documentView = navigation
         sidebarContent.addSubview(scroll)
-        pages = (0..<3).map { _ in SettingsPageView(frame: NSRect(x: 0, y: 0, width: 640, height: 560)) }
+        pages = SettingsSection.allCases.map { _ in SettingsPageView(frame: NSRect(x: 0, y: 0, width: 640, height: 560)) }
         pageScrollViews = pages.map { page in
             let viewport = NSScrollView(frame: NSRect(x: 220, y: 12, width: 640, height: root.bounds.height - 64))
             viewport.autoresizingMask = [.height]
@@ -226,7 +249,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         windowHeading.font = .systemFont(ofSize: 13, weight: .semibold)
         windowHeading.autoresizingMask = [.minYMargin]
         root.addSubview(windowHeading)
-        let general = pages[0], appearance = pages[1], about = pages[2]
+        let general = pages[0], behaviour = pages[1], buffer = pages[2]
+        let appearance = pages[3], experimental = pages[4], about = pages[5]
         general.addSubview(label("General", x: 28, y: 494, width: 560, size: 24))
         let activationCard = card(NSRect(x: 24, y: 396, width: 592, height: 64))
         general.addSubview(activationCard)
@@ -239,7 +263,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         activationCard.contentView?.addSubview(activationLabel)
         activationCard.contentView?.addSubview(activationSwitch)
         alignSettingsLabels([activationLabel], with: activationSwitch)
-        let shortcutCard = card(NSRect(x: 24, y: 224, width: 592, height: 64))
+        let shortcutCard = card(NSRect(x: 24, y: 156, width: 592, height: 64))
         general.addSubview(shortcutCard)
         let shortcutLabel = label("Trigger Shortcut", x: 16, y: 21, width: 280)
         shortcutCard.contentView?.addSubview(shortcutLabel)
@@ -247,9 +271,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         recorder.frame.origin = NSPoint(x: 352, y: 16)
         shortcutCard.contentView?.addSubview(recorder)
         alignSettingsLabels([shortcutLabel], centerY: recorder.frame.minY + recorder.controlCenterY)
-        let structureCard = card(NSRect(x: 24, y: 144, width: 592, height: 64))
-        let hapticCard = card(NSRect(x: 24, y: 64, width: 592, height: 64))
-        general.addSubview(structureCard)
+        behaviour.addSubview(label("Behaviour", x: 28, y: 494, width: 560, size: 24))
+        let structureCard = card(NSRect(x: 24, y: 396, width: 592, height: 64))
+        let hapticCard = card(NSRect(x: 24, y: 76, width: 592, height: 64))
+        behaviour.addSubview(structureCard)
         general.addSubview(hapticCard)
         guard let structureContent = structureCard.contentView,
               let hapticContent = hapticCard.contentView else { return }
@@ -274,8 +299,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         hapticContent.addSubview(haptics)
         alignSettingsLabels([hapticTitle, hapticDetail], with: haptics)
 
-        let clipboardCard = card(NSRect(x: 24, y: -16, width: 592, height: 64))
-        general.addSubview(clipboardCard)
+        let clipboardCard = card(NSRect(x: 24, y: 316, width: 592, height: 64))
+        behaviour.addSubview(clipboardCard)
         let clipboardLabel = label("Overwrite clipboard", x: 16, y: 35, width: 470)
         let clipboardDetail = label("Keep successfully dropped content on the clipboard.", x: 16, y: 12, width: 510, size: 12, secondary: true)
         let clipboardSwitch = NSSwitch(frame: NSRect(x: 528, y: 20, width: 40, height: 24))
@@ -291,29 +316,31 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         clipboardCard.contentView?.addSubview(clipboardSwitch)
         alignSettingsLabels([clipboardLabel, clipboardDetail], with: clipboardSwitch)
 
-        let bufferCard = card(NSRect(x: 24, y: -148, width: 592, height: 116))
-        let bufferTitle = label("Buffer", x: 16, y: 87, width: 470)
-        let bufferDetail = label("Keep an item above your apps, then drag it into an input.", x: 16, y: 64, width: 510, size: 12, secondary: true)
-        bufferSwitch.frame = NSRect(x: 528, y: 72, width: 40, height: 24)
+        buffer.addSubview(label("Buffer", x: 28, y: 494, width: 560, size: 24))
+        let bufferCard = card(NSRect(x: 24, y: 396, width: 592, height: 64))
+        let bufferTitle = label("Buffer", x: 16, y: 35, width: 470)
+        let bufferDetail = label("Keep an item above your apps, then drag it into an input.", x: 16, y: 12, width: 510, size: 12, secondary: true)
+        bufferSwitch.frame = NSRect(x: 528, y: 20, width: 40, height: 24)
         bufferSwitch.state = CapturePreferences.bufferEnabled ? .on : .off
         bufferSwitch.target = self; bufferSwitch.action = #selector(bufferChanged(_:))
         bufferSwitch.setAccessibilityLabel("Buffer")
         [bufferTitle, bufferDetail, bufferSwitch].forEach { bufferCard.contentView?.addSubview($0) }
         alignSettingsLabels([bufferTitle, bufferDetail], with: bufferSwitch)
-        general.addSubview(bufferCard)
-        bufferCard.contentView?.addSubview(settingsCardDivider(y: 52, width: 592))
+        buffer.addSubview(bufferCard)
+        let positionCard = card(NSRect(x: 24, y: 316, width: 592, height: 64))
+        buffer.addSubview(positionCard)
         let positionTitle = bufferPositionLabel
-        positionTitle.frame = NSRect(x: 16, y: 16, width: 280, height: 20)
-        bufferPositionControl.frame = NSRect(x: 416, y: 12, width: 157, height: 28)
+        positionTitle.frame = NSRect(x: 16, y: 21, width: 280, height: 20)
+        bufferPositionControl.frame = NSRect(x: 416, y: 18, width: 157, height: 28)
         bufferPositionControl.addItems(withTitles: BufferPosition.allCases.map(\.title))
         bufferPositionControl.selectItem(at: BufferPosition.allCases.firstIndex(of: CapturePreferences.bufferPosition) ?? 0)
         bufferPositionControl.target = self; bufferPositionControl.action = #selector(bufferPositionChanged)
         bufferPositionControl.setAccessibilityLabel("Position of buffer")
-        bufferCard.contentView?.addSubview(positionTitle)
-        bufferCard.contentView?.addSubview(bufferPositionControl)
+        positionCard.contentView?.addSubview(positionTitle)
+        positionCard.contentView?.addSubview(bufferPositionControl)
         alignSettingsLabels([positionTitle], with: bufferPositionControl)
         refreshBufferPositionAvailability()
-        let dockCard = card(NSRect(x: 24, y: -228, width: 592, height: 64))
+        let dockCard = card(NSRect(x: 24, y: 52, width: 592, height: 64))
         let dockLabel = label("Hide app icon from Dock", x: 16, y: 21, width: 470)
         dockIconSwitch.frame = NSRect(x: 528, y: 20, width: 40, height: 24)
         dockIconSwitch.state = AppPresentationPreferences.hidesDockIcon() ? .on : .off
@@ -323,25 +350,31 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         dockCard.contentView?.addSubview(dockLabel)
         dockCard.contentView?.addSubview(dockIconSwitch)
         alignSettingsLabels([dockLabel], with: dockIconSwitch)
-        general.addSubview(dockCard)
 
-        let accessibilityCard = card(NSRect(x: 24, y: 304, width: 592, height: 76))
-        let accessibilityLabel = label("Accessibility", x: 16, y: 42, width: 390)
-        accessibilityStatus.frame = NSRect(x: 16, y: 17, width: 390, height: 22)
-        accessibilityStatus.font = .systemFont(ofSize: 12)
-        accessibilityStatus.setAccessibilityLabel("Accessibility permission status")
-        let accessibilityButton = NSButton(title: "Open System Settings…", target: self, action: #selector(openAccessibilitySettings))
+        let accessibilityCard = card(NSRect(x: 24, y: 316, width: 592, height: 64))
+        let accessibilityLabel = label("Accessibility", x: 16, y: 21, width: 350)
+        accessibilityButton.target = self
+        accessibilityButton.action = #selector(openAccessibilitySettings)
         accessibilityButton.bezelStyle = .rounded
-        accessibilityButton.frame = NSRect(x: 400, y: 23, width: 176, height: 30)
+        accessibilityButton.frame = NSRect(x: 400, y: 17, width: 176, height: 30)
         accessibilityButton.setAccessibilityLabel("Manage Accessibility permission")
+        accessibilityStatus.frame = NSRect(x: 400, y: 20, width: 176, height: 24)
+        accessibilityStatus.font = .systemFont(ofSize: 13)
+        accessibilityStatus.alignment = .center
+        accessibilityStatus.setAccessibilityLabel("Accessibility permission status")
         [accessibilityLabel, accessibilityStatus, accessibilityButton].forEach { accessibilityCard.contentView?.addSubview($0) }
+        alignSettingsLabels([accessibilityLabel], with: accessibilityButton)
+        alignSettingsLabels([accessibilityStatus], centerY: accessibilityButton.frame.midY)
         general.addSubview(accessibilityCard)
+        let startupCard = card(NSRect(x: 24, y: 236, width: 592, height: 64))
+        startupCard.contentView?.addSubview(launchAtLoginView)
+        general.addSubview(startupCard)
         refreshAccessibility()
 
-        general.addSubview(label("Experimental", x: 28, y: -270, width: 440, size: 15))
-        general.addSubview(feedbackButton(at: NSPoint(x: 472, y: -275)))
-        let multiselectCard = card(NSRect(x: 24, y: -342, width: 592, height: 64))
-        general.addSubview(multiselectCard)
+        experimental.addSubview(label("Experimental", x: 28, y: 494, width: 440, size: 24))
+        experimental.addSubview(feedbackButton(at: NSPoint(x: 472, y: 492)))
+        let multiselectCard = card(NSRect(x: 24, y: 396, width: 592, height: 64))
+        experimental.addSubview(multiselectCard)
         let multiselectLabel = label("Multi-select", x: 16, y: 21, width: 110)
         let multiselectSwitch = NSSwitch(frame: NSRect(x: 528, y: 20, width: 40, height: 24))
         multiselectSwitch.state = CapturePreferences.multiselectEnabled ? .on : .off
@@ -364,8 +397,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         info.setAccessibilityHelp(info.toolTip)
         multiselectCard.contentView?.addSubview(info)
 
-        let selectedTextCard = card(NSRect(x: 24, y: -422, width: 592, height: 64))
-        general.addSubview(selectedTextCard)
+        let selectedTextCard = card(NSRect(x: 24, y: 316, width: 592, height: 64))
+        experimental.addSubview(selectedTextCard)
         let selectedTextLabel = label("Drag selected text", x: 16, y: 21, width: 180)
         let selectedTextSwitch = NSSwitch(frame: NSRect(x: 528, y: 20, width: 40, height: 24))
         selectedTextSwitch.state = CapturePreferences.selectedTextDraggingEnabled ? .on : .off
@@ -389,18 +422,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         selectedTextCard.contentView?.addSubview(selectedTextInfo)
 
         appearance.addSubview(label("Appearance", x: 28, y: 494, width: 560, size: 24))
-        appearance.addSubview(label("Customize selection highlights and transitions.", x: 28, y: 462, width: 584, secondary: true))
-        appearance.addSubview(label("Selection", x: 28, y: 432, width: 584, size: 15))
-        appearance.addSubview(label("Motion", x: 28, y: 218, width: 584, size: 15))
         let glass = GlassSettingsView { [weak self] in
             self?.onAppearanceChange()
             self?.animations.refresh()
         }
-        glass.frame.origin = NSPoint(x: 24, y: 252)
-        animations.frame.origin = NSPoint(x: 24, y: 44)
+        glass.frame.origin = NSPoint(x: 24, y: 288)
+        animations.frame.origin = NSPoint(x: 24, y: 132)
         appearance.addSubview(glass)
         appearance.addSubview(animations)
-        appearance.addSubview(label("Works only with Liquid Glass.", x: 28, y: 194, width: 584, size: 11, secondary: true))
+        appearance.addSubview(dockCard)
         about.addSubview(label("About", x: 28, y: 494, width: 560, size: 24))
         about.addSubview(feedbackButton(at: NSPoint(x: 472, y: 492)))
         let aboutCard = card(NSRect(x: 24, y: 120, width: 592, height: 340))
@@ -525,7 +555,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         let cell = NSTableCellView()
         let icon = NSImageView()
         icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.image = NSImage(systemSymbolName: ["gearshape", "paintpalette", "info.circle"][row], accessibilityDescription: nil)
+        icon.image = NSImage(systemSymbolName: SettingsSection.allCases[row].symbol, accessibilityDescription: nil)
         icon.contentTintColor = .secondaryLabelColor
         cell.addSubview(icon)
         let text = NSTextField(labelWithString: pageNames[row])
@@ -609,9 +639,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
     }
 
     @objc private func refreshAccessibility() {
-        let granted = AXIsProcessTrusted()
-        accessibilityStatus.stringValue = granted ? "Allowed" : "Not allowed — enable Drag 2.0 in System Settings."
-        accessibilityStatus.textColor = granted ? .systemGreen : .secondaryLabelColor
+        let granted = isAccessibilityGranted()
+        accessibilityStatus.stringValue = granted ? "Allowed" : "Not allowed"
+        accessibilityStatus.textColor = .systemGreen
+        accessibilityStatus.isHidden = !granted
+        accessibilityButton.isHidden = granted
+        launchAtLoginView.refresh()
     }
 
     @objc private func openAccessibilitySettings() {

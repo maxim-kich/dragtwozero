@@ -63,6 +63,8 @@ Never put private documents, recordings of unrelated windows, clipboard dumps or
 
 - In General, Accessibility appears directly below Activate. Its granted status stays visible in onboarding.
 - Multi-select and Drag selected text are experimental and default to off. Enable Multi-select explicitly before its checks; empty-space capture with it off should explain how to enable it.
+- Known selection-state limitation: with Drag selected text enabled, a browser-reported selection containing only a non-text object/control can block ordinary highlights and empty-space marquee. Record this separately from genuine selected-text capture. Compare with Drag selected text disabled without editing the source or destination; do not count bypassing this check as a fix.
+- Known mixed-selection limitation: test text plus a clickable image/avatar exposed as a link. If fresh source validation cannot resolve that link, the group can cancel when dragging starts. Record that outcome separately from text-only and ordinary text-link groups; do not weaken source validation to make the test pass.
 - With a newly launched Electron app and no other accessibility tools attached, hold the shortcut over text. Highlighting and marquee discovery must work without Screen Recording permission. Optional backdrop sampling must not delay source detection.
 - In Drag Settings, the shortcut highlights text; recording a shortcut, onboarding, and modal dialogs still block capture. Own windows must never expose content behind them.
 - With Buffer both on and off, select multiple blocks, release the mouse first, grab the selection, then repeat releasing the shortcut first. Escape and switching apps cancel safely.

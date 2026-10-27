@@ -15,6 +15,59 @@ final class ParagraphCaptureTests: XCTestCase {
     private func capture(_ node: Node, preserveStructure: Bool = false) -> CaptureCandidate? {
         TextBlockReader<Node>(details: { $0.info }, parent: { $0.parent }, children: { $0.children }, equal: { $0 === $1 }, preserveStructure: preserveStructure).candidate(at: node)
     }
+
+    func testEqualBoundsKeepTheSemanticBlockIdentityAcrossHits() throws {
+        let text = Node("AXStaticText", "Same visible content")
+        let heading = Node("AXHeading", children: [text])
+        let reader = TextBlockReader<Node>(details: { $0.info }, parent: { $0.parent }, children: { $0.children }, equal: { $0 === $1 })
+        XCTAssertEqual(heading.info.frame, text.info.frame)
+        for hit in [heading, text] {
+            let result = try XCTUnwrap(reader.resolution(at: hit))
+            XCTAssertTrue(result.block === heading)
+            XCTAssertEqual(result.candidate.payload.text, "Same visible content")
+            XCTAssertEqual(result.candidate.frame, heading.info.frame)
+        }
+    }
+
+    func testEqualBoundsKeepTheInferredInlineGroupIdentity() throws {
+        let before = Node("AXStaticText", "Read ")
+        let link = Node("AXLink", "guide", url: URL(string: "https://example.test/guide"))
+        let group = Node("AXGroup", children: [before, link])
+        let reader = TextBlockReader<Node>(details: { $0.info }, parent: { $0.parent }, children: { $0.children }, equal: { $0 === $1 })
+        for hit in [group, before, link] {
+            let result = try XCTUnwrap(reader.resolution(at: hit))
+            XCTAssertTrue(result.block === group)
+            XCTAssertEqual(result.candidate.payload.text, "Read [guide](https://example.test/guide)")
+        }
+    }
+
+    func testIdenticalTextAndBoundsDoNotMergeDistinctSourceNodes() throws {
+        let first = Node("AXHeading", children: [Node("AXStaticText", "Duplicate")])
+        let second = Node("AXHeading", children: [Node("AXStaticText", "Duplicate")])
+        let reader = TextBlockReader<Node>(details: { $0.info }, parent: { $0.parent }, children: { $0.children }, equal: { $0 === $1 })
+        let a = try XCTUnwrap(reader.resolution(at: first.children[0]))
+        let b = try XCTUnwrap(reader.resolution(at: second.children[0]))
+        XCTAssertEqual(a.candidate.payload.text, b.candidate.payload.text)
+        XCTAssertEqual(a.candidate.frame, b.candidate.frame)
+        XCTAssertTrue(a.block === first)
+        XCTAssertTrue(b.block === second)
+        XCTAssertFalse(a.block === b.block)
+    }
+
+    func testPointSearchKeepsTheIdentityOfTheAcceptedBlock() throws {
+        let first = Node("AXParagraph", frame: CGRect(x: 10, y: 20, width: 300, height: 20), children: [Node("AXStaticText", "First")])
+        let text = Node("AXStaticText", "Second", frame: CGRect(x: 10, y: 80, width: 300, height: 20))
+        let second = Node("AXParagraph", frame: text.info.frame!, children: [text])
+        let page = Node("AXWebArea", frame: CGRect(x: 0, y: 0, width: 800, height: 800), children: [first, second])
+        let reader = TextBlockReader<Node>(details: { $0.info }, parent: { $0.parent }, children: { $0.children }, equal: { $0 === $1 })
+        let result = try XCTUnwrap(reader.resolution(at: page, containing: CGPoint(x: 40, y: 90)))
+        XCTAssertTrue(result.block === second)
+        XCTAssertEqual(result.candidate.payload.text, "Second")
+        XCTAssertNil(reader.resolution(at: page, containing: CGPoint(x: 40, y: 60)))
+        let editor = Node("AXTextArea", children: [second])
+        XCTAssertNil(reader.resolution(at: text))
+        XCTAssertNil(reader.resolution(at: editor, containing: CGPoint(x: 40, y: 90)))
+    }
     func testSecureSubroleRejectsHitAndAncestorAndSkipsNestedContent() {
         let secret = Node("AXStaticText", "Synthetic private fixture")
         secret.info.subrole = "AXSecureTextField"

@@ -69,6 +69,11 @@ struct TextNodeDetails {
 
 /// The resolver is shared by live AX capture and structural regression fixtures.
 struct TextBlockReader<Node> {
+    struct Resolution {
+        let candidate: CaptureCandidate
+        let block: Node
+    }
+
     let details: (Node) -> TextNodeDetails
     let parent: (Node) -> Node?
     let children: (Node) -> [Node]
@@ -76,6 +81,12 @@ struct TextBlockReader<Node> {
     var preserveStructure = false
 
     func candidate(at hit: Node) -> CaptureCandidate? {
+        resolution(at: hit)?.candidate
+    }
+
+    /// Carry the selected source node with its content. Equal rectangles do
+    /// not establish identity between a semantic block and its text children.
+    func resolution(at hit: Node) -> Resolution? {
         var chain = [hit]
         for _ in 0..<20 {
             guard let next = parent(chain.last!), !chain.contains(where: { equal($0, next) }) else { break }
@@ -113,14 +124,18 @@ struct TextBlockReader<Node> {
     /// AX may hit a page/container in the leading between lines. Resolve by block bounds,
     /// visiting only the branches under the pointer, with a hard accessibility-work budget.
     func candidate(at hit: Node, containing point: CGPoint) -> CaptureCandidate? {
-        if let result = candidate(at: hit), result.frame.contains(point) { return result }
+        resolution(at: hit, containing: point)?.candidate
+    }
+
+    func resolution(at hit: Node, containing point: CGPoint) -> Resolution? {
+        if let result = resolution(at: hit), result.candidate.frame.contains(point) { return result }
         var budget = 160
-        func search(_ node: Node, depth: Int) -> CaptureCandidate? {
+        func search(_ node: Node, depth: Int) -> Resolution? {
             budget -= 1
             guard budget > 0, depth < 24 else { return nil }
             let info = details(node)
             guard !info.isEditable, info.frame?.contains(point) != false else { return nil }
-            if let result = candidate(at: node), result.frame.contains(point) { return result }
+            if let result = resolution(at: node), result.candidate.frame.contains(point) { return result }
             for child in children(node) {
                 guard budget > 0 else { break }
                 if let result = search(child, depth: depth + 1) { return result }
@@ -171,7 +186,7 @@ struct TextBlockReader<Node> {
         }
         return true
     }
-    private func capture(_ block: Node) -> CaptureCandidate? {
+    private func capture(_ block: Node) -> Resolution? {
         guard let frame = details(block).frame else { return nil }
         var budget = 512
         guard let fragment = read(block, depth: 0, budget: &budget), budget > 0 else { return nil }
@@ -179,7 +194,7 @@ struct TextBlockReader<Node> {
         let info = details(block)
         let text = preserveStructure ? structuredMarkdown(plainMarkdown, role: info.role, subrole: info.subrole, headingLevel: info.headingLevel) : plainMarkdown
         guard !plainMarkdown.isEmpty, text.count <= 32_000 else { return nil }
-        return CaptureCandidate(payload: .init(title: String(text.prefix(100)), markdown: text), frame: frame)
+        return Resolution(candidate: CaptureCandidate(payload: .init(title: String(text.prefix(100)), markdown: text), frame: frame), block: block)
     }
     private func read(_ node: Node, depth: Int, budget: inout Int) -> TextFragment? {
         budget -= 1
@@ -272,10 +287,9 @@ struct AccessibleTextBlockAdapter: SourceAdapter {
                 return info
             }, parent: { axElement(read($0, kAXParentAttribute)) },
                children: { read($0, kAXChildrenAttribute) as? [AXUIElement] ?? [] }, equal: { CFEqual($0, $1) }, preserveStructure: preserveStructure)
-            let result = point.map { reader.candidate(at: element, containing: $0) } ?? reader.candidate(at: element)
+            let result = point.map { reader.resolution(at: element, containing: $0) } ?? reader.resolution(at: element)
             guard !shouldStop(), let result else { return nil }
-            let blockNode = cache.values.lazy.flatMap { $0 }.first { $0.1.frame == result.frame }?.0 ?? element
-            let anchored = result.anchored(to: blockNode, shouldStop: shouldStop)
+            let anchored = result.candidate.anchored(to: result.block, shouldStop: shouldStop)
             return shouldStop() ? nil : anchored
         }
     }

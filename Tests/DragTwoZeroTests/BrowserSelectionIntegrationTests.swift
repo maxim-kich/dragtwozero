@@ -5,6 +5,42 @@ import XCTest
 /// Opt in with a browser PID after opening scripts/fixtures/selected-text.html.
 /// Reads only that synthetic fixture; never inspects an unrelated document.
 final class BrowserSelectionIntegrationTests: XCTestCase {
+    func testBrowserEqualBoundsKeepCanonicalBlockIdentity() throws {
+        guard let value = ProcessInfo.processInfo.environment["DRAGTWOZERO_BROWSER_FIXTURE_PID"],
+              let pid = Int32(value) else { throw XCTSkip("Requires the synthetic browser fixture") }
+        let app = AXUIElementCreateApplication(pid)
+        let windows = attribute(app, kAXWindowsAttribute) as? [AXUIElement] ?? []
+        let window = try XCTUnwrap(windows.first {
+            (attribute($0, kAXTitleAttribute) as? String)?.hasPrefix("Drag selection test") == true
+        })
+        var remaining = 1_000
+        func headings(_ node: AXUIElement, depth: Int = 0) -> [AXUIElement] {
+            remaining -= 1
+            guard remaining > 0, depth < 30 else { return [] }
+            if attribute(node, kAXRoleAttribute) as? String == "AXHeading",
+               let child = (attribute(node, kAXChildrenAttribute) as? [AXUIElement])?.first,
+               (attribute(child, kAXValueAttribute) as? String)?.hasPrefix("Identity fixture ") == true { return [node] }
+            return (attribute(node, kAXChildrenAttribute) as? [AXUIElement] ?? []).flatMap { headings($0, depth: depth + 1) }
+        }
+        let blocks = headings(window)
+        XCTAssertEqual(blocks.count, 3)
+        let adapter = AccessibleTextBlockAdapter()
+        var previous: CaptureCandidate?
+        for block in blocks {
+            let text = try XCTUnwrap((attribute(block, kAXChildrenAttribute) as? [AXUIElement])?.first)
+            XCTAssertEqual(bounds(block), bounds(text), "Fixture must exercise ambiguous equal bounds")
+            let expected = try XCTUnwrap(adapter.candidate(at: block))
+            XCTAssertTrue(CaptureElementContext.sameElement(expected.anchor, block))
+            for _ in 0..<8 {
+                let current = try XCTUnwrap(adapter.candidate(at: text))
+                XCTAssertTrue(CaptureElementContext.sameElement(current.anchor, block))
+                XCTAssertTrue(expected.matchesRetainedSource(current))
+            }
+            if let previous { XCTAssertFalse(previous.matchesRetainedSource(expected)) }
+            previous = expected
+        }
+    }
+
     func testBrowserMarkerSelectionAcrossWrappedLines() throws {
         guard let value = ProcessInfo.processInfo.environment["DRAGTWOZERO_BROWSER_FIXTURE_PID"],
               let pid = Int32(value) else { throw XCTSkip("Requires the synthetic browser fixture") }

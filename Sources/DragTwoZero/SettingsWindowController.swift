@@ -384,7 +384,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         selectedTextInfo.action = #selector(showSelectedTextInfo(_:))
         selectedTextInfo.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "How selected-text dragging works")
         selectedTextInfo.contentTintColor = .secondaryLabelColor
-        selectedTextInfo.toolTip = "Select text first. Hold the shortcut and hover the selection, then drag it all together."
+        selectedTextInfo.toolTip = "Select text first. Hold the shortcut to show a hint under the pointer, then grab it and drag to an input. After grabbing, you can release the shortcut. Releasing it before grabbing cancels; Escape cancels at any time."
         selectedTextInfo.setAccessibilityHelp(selectedTextInfo.toolTip)
         selectedTextCard.contentView?.addSubview(selectedTextInfo)
 

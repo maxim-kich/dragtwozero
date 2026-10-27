@@ -8,7 +8,7 @@ Drag text and links between Mac apps. Hold a shortcut, pick a block, and drop it
 
 [Website](https://dragtwozero.com) · [Releases](https://github.com/maxim-kich/dragtwozero/releases) · [Legal & Privacy](https://dragtwozero.com/legal#app-privacy)
 
-The app is **Drag 2.0 (Alpha)**. Version **0.0.3** is in preparation; no public app download is available yet.
+The app is **Drag 2.0 (Alpha)**. Version **0.0.4** is in preparation; no public app download is available yet.
 
 The installation minimum is **macOS 13**. Official support is limited to the latest major macOS release once validated; older versions are best-effort and may work, but are unsupported. This candidate has been tested on **macOS 26.4.1**; validation on the current major release, macOS 27, is pending. Liquid Glass requires macOS 26 or later.
 
@@ -20,7 +20,7 @@ The installation minimum is **macOS 13**. Official support is limited to the lat
 
 Settings lets you change the shortcut, appearance, haptics, and formatting. Optional **Buffer** holds one item for later. **Multi-select** and **Drag selected text** are under Experimental. All three are off by default.
 
-Drag 2.0 never submits your text. Compatibility depends on each app’s Accessibility support. See the [usage guide and limitations](docs/usage.md).
+Drag 2.0 never submits your text. Compatibility depends on each app’s Accessibility support. See the [usage guide and limitations](docs/usage.md), including the [known Chromium paste issue](docs/usage.md#known-chromium-paste-issue).
 
 ## Build
 

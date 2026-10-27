@@ -117,6 +117,82 @@ enum EditorSelectionScope {
 }
 
 struct AccessibleSelectedTextAdapter {
+    /// A draggable hint needs selection identity and text, not glyph geometry.
+    /// All content reads stay bounded and the final range/text must match.
+    func pickup(at hit: AXUIElement, origin: CGPoint, shouldStop: () -> Bool = { false }) -> SelectedTextLookup {
+        withoutActuallyEscaping(shouldStop) { shouldStop in
+            let deadline = ProcessInfo.processInfo.systemUptime + 0.3
+            let stop = { shouldStop() || ProcessInfo.processInfo.systemUptime >= deadline }
+            let chain = ancestors(hit, limit: 40, shouldStop: stop)
+            guard !stop(), !chain.contains(where: { stop() || isSecure($0) }) else { return .unavailable }
+            if let web = chain.first(where: { attribute($0, kAXRoleAttribute) as? String == "AXWebArea" }) {
+                if let scoped = selectionOutsideEditor(at: web, hitChain: chain, deadline: deadline) { return scoped }
+                guard !stop() else { return .unavailable }
+                var raw: CFTypeRef?
+                let status = AXUIElementCopyAttributeValue(web, "AXSelectedTextMarkerRange" as CFString, &raw)
+                if status == .noValue || status == .attributeUnsupported {
+                    if let range = InputTarget.selectedRange(web), range.length > 0 { return nativePickup(at: web, origin: origin, stop: stop) }
+                    if let text = attribute(web, kAXSelectedTextAttribute) as? String, !text.isEmpty { return .unavailable }
+                    return stop() ? .unavailable : .none
+                }
+                guard status == .success, let raw, CFGetTypeID(raw) == AXTextMarkerRangeGetTypeID(), !stop() else { return .unavailable }
+                let range = raw as! AXTextMarkerRange
+                if SelectedTextMarkers.sameMarker(AXTextMarkerRangeCopyStartMarker(range), AXTextMarkerRangeCopyEndMarker(range)) { return .none }
+                guard let text = parameter(web, "AXStringForTextMarkerRange", range) as? String,
+                      text.utf16.count <= 32_000, !stop() else { return .unavailable }
+                let options = ["AXTextMarkerRange": range, "AXSpellCheck": false] as CFDictionary
+                let attributed = text.isEmpty ? nil : (parameter(web, "AXAttributedStringForTextMarkerRangeWithOptions", options) as? NSAttributedString)
+                    ?? (parameter(web, "AXAttributedStringForTextMarkerRange", range) as? NSAttributedString)
+                guard !stop(), let current = attribute(web, "AXSelectedTextMarkerRange"),
+                      CFGetTypeID(current) == AXTextMarkerRangeGetTypeID(),
+                      SelectedTextMarkers.sameRange(range, current as! AXTextMarkerRange),
+                      let currentText = parameter(web, "AXStringForTextMarkerRange", current) as? String,
+                      text.utf16.elementsEqual(currentText.utf16), !stop() else { return .unavailable }
+                // A stable object/control range with no characters is not selected text.
+                guard !text.isEmpty else { return .none }
+                return pickupCandidate(text: text, attributed: attributed, owner: web, origin: origin,
+                                       range: CFRange(location: 0, length: text.utf16.count), markers: range, stop: stop)
+            }
+            for owner in chain {
+                guard !stop() else { return .unavailable }
+                var raw: CFTypeRef?
+                let status = AXUIElementCopyAttributeValue(owner, kAXSelectedTextRangeAttribute as CFString, &raw)
+                if status == .success {
+                    guard let range = InputTarget.selectedRange(owner) else { return .unavailable }
+                    if range.length > 0 { return nativePickup(at: owner, origin: origin, stop: stop) }
+                    if ["AXTextArea", "AXTextField"].contains(attribute(owner, kAXRoleAttribute) as? String ?? "") { return .none }
+                } else if status != .noValue && status != .attributeUnsupported { return .unavailable }
+                if attribute(owner, kAXRoleAttribute) as? String == "AXWindow" { break }
+            }
+            return stop() ? .unavailable : .none
+        }
+    }
+
+    private func nativePickup(at owner: AXUIElement, origin: CGPoint, stop: () -> Bool) -> SelectedTextLookup {
+        guard !stop(), let range = InputTarget.selectedRange(owner), range.location >= 0,
+              range.length > 0, range.length <= 32_000, range.location <= Int.max - range.length,
+              let text = attribute(owner, kAXSelectedTextAttribute) as? String,
+              text.utf16.count == range.length else { return .unavailable }
+        var selected = range
+        let attributed = AXValueCreate(.cfRange, &selected).flatMap { parameter(owner, kAXAttributedStringForRangeParameterizedAttribute, $0) as? NSAttributedString }
+        guard !stop(), let current = InputTarget.selectedRange(owner), current.location == range.location, current.length == range.length,
+              let currentText = attribute(owner, kAXSelectedTextAttribute) as? String,
+              text.utf16.elementsEqual(currentText.utf16), !stop() else { return .unavailable }
+        return pickupCandidate(text: text, attributed: attributed, owner: owner, origin: origin, range: range, markers: nil, stop: stop)
+    }
+
+    private func pickupCandidate(text: String, attributed: NSAttributedString?, owner: AXUIElement, origin: CGPoint,
+                                 range: CFRange, markers: AXTextMarkerRange?, stop: () -> Bool) -> SelectedTextLookup {
+        let context = CaptureElementContext(chain: ancestors(owner, limit: 40, shouldStop: stop), shouldStop: stop)
+        guard !stop(), context.window != nil else { return .unavailable }
+        let markdown = SelectedTextFormatting.markdown(text, attributed: attributed, preserveStructure: CapturePreferences.preserveStructure)
+        var candidate = CaptureCandidate(payload: .init(title: "Selected text", markdown: markdown), frame: CGRect(origin: origin, size: CGSize(width: 1, height: 1)))
+        candidate.anchor = owner; candidate.context = context
+        candidate.selectedTextRange = range; candidate.selectedTextMarkerRange = markers
+        candidate.textFrames = []
+        return .selected(candidate)
+    }
+
     func candidate(at hit: AXUIElement, containing point: CGPoint) -> CaptureCandidate? {
         if case let .selected(candidate) = lookup(at: hit), candidate.containsVisiblePoint(point) { return candidate }
         return nil

@@ -12,6 +12,13 @@ func hintFrame(at point: CGPoint, size: CGSize, screen: CGRect) -> CGRect {
     return CGRect(origin: CGPoint(x: x, y: y), size: size)
 }
 
+func selectedTextHintFrame(at point: CGPoint, size: CGSize, screen: CGRect) -> CGRect {
+    let margin: CGFloat = 0
+    let x = max(screen.minX + margin, min(point.x - size.width / 2, screen.maxX - size.width - margin))
+    let y = max(screen.minY + margin, min(point.y - size.height / 2, screen.maxY - size.height - margin))
+    return CGRect(origin: CGPoint(x: x, y: y), size: size)
+}
+
 /// Screen bounds are in Cocoa coordinates, including negative and stacked displays.
 func overlayScreenFrame(at point: CGPoint, screens: [CGRect]) -> CGRect? {
     screens.first { $0.contains(point) }
@@ -417,11 +424,17 @@ final class Overlay {
             icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         }
     }
-    func show(at point: CGPoint, text: String, symbol: String = "cursorarrow") {
+    func show(at point: CGPoint, text: String, symbol: String = "cursorarrow", centeredOnPointer: Bool = false) {
         guard !dragging, !completing else { return }
         configureHint(text: text, symbol: symbol)
         size = CGSize(width: min(280, max(64, ceil(label.intrinsicContentSize.width) + 51)), height: 48)
-        move(to: point); layout(size)
+        if centeredOnPointer {
+            pointer = point; updateScreen(at: point)
+            let screens = NSScreen.screens.map { cocoa($0.visibleFrame) }
+            let screen = screens.first(where: { $0.contains(point) }) ?? screens.first ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
+            badge.frame = cocoa(selectedTextHintFrame(at: point, size: size, screen: screen))
+        } else { move(to: point) }
+        layout(size)
         let appearing = badge.isHidden
         // First presentation must contain visible glass, not a zero-opacity material
         // whose backdrop registration can be deferred until a later geometry change.
@@ -440,6 +453,11 @@ final class Overlay {
         configureHint(text: title, symbol: symbol)
         updateScreen(at: point)
         collapse(from: frame, to: point, symbol: symbol, startingInSlot: true)
+    }
+    func liftSelectedTextHint(from frame: CGRect, at point: CGPoint) {
+        configureHint(text: "Selected text", symbol: "text.alignleft")
+        updateScreen(at: point)
+        collapse(from: frame, to: point, symbol: "text.alignleft", startingInSlot: true)
     }
     func collapse(from frame: CGRect, to point: CGPoint, symbol: String, startingInSlot: Bool = false) {
         haptics.startDrag()

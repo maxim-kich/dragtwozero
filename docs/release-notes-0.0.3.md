@@ -16,6 +16,8 @@ Apple Silicon; installation minimum macOS 13. Official support remains limited t
 
 Unknown or transformed editor content that cannot be proved remains unconfirmed. The Buffer item and temporary clipboard payload can remain available for recovery even with Overwrite clipboard off. Check the destination before retrying; there is no automatic retry.
 
+A known Chromium clipboard race can also prevent insertion after Paste with both experiments off. Checked Chrome 155.0.8059.85 and 156.0.8078.48 sources retain the affected logic; checked 157.0.8103.15 Beta source contains the upstream fix. See the [known problem, exact version checks and recovery guidance](usage.md#known-chromium-paste-issue). This candidate does not add a browser workaround or claim that every newer browser build is fixed.
+
 Experimental browser selection limitations remain unresolved. With Drag selected text enabled, an unreadable non-text object/control selection can block ordinary highlighting and Multi-select. Clickable images or avatars exposed as links can also cancel a mixed group when dragging starts. These selection failures can occur wherever a source exposes the same Accessibility state. See the [experimental feature notes and workarounds](usage.md#experimental-features). Both experiments remain off by default; this candidate does not change their capture logic.
 
 Install the release's macOS arm64 ZIP or DMG and verify it against `SHA256SUMS.txt`. GitHub's Source code archives are for building the app. Publishing, hosted-updater acceptance and clean-machine acceptance remain separate release gates.

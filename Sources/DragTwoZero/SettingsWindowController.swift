@@ -360,7 +360,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         accessibilityButton.setAccessibilityLabel("Manage Accessibility permission")
         accessibilityStatus.frame = NSRect(x: 400, y: 20, width: 176, height: 24)
         accessibilityStatus.font = .systemFont(ofSize: 13)
-        accessibilityStatus.alignment = .center
+        accessibilityStatus.alignment = .right
         accessibilityStatus.setAccessibilityLabel("Accessibility permission status")
         [accessibilityLabel, accessibilityStatus, accessibilityButton].forEach { accessibilityCard.contentView?.addSubview($0) }
         alignSettingsLabels([accessibilityLabel], with: accessibilityButton)

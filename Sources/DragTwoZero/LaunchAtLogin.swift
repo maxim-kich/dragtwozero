@@ -32,14 +32,17 @@ final class LaunchAtLoginController {
 /// Shared by Settings and onboarding, including OS approval and error states.
 final class LaunchAtLoginView: NSView {
     private let controller: LaunchAtLoginController
+    private let openSettings: () -> Void
     private let toggle = NSSwitch()
     private let title = NSTextField(labelWithString: "Launch at login")
     private let detail = NSTextField(labelWithString: "")
     private let approval = NSButton(title: "Approval needed — open Login Items…", target: nil, action: nil)
     private var changeFailed = false
 
-    init(frame: NSRect, leadingInset: CGFloat = 16, controller: LaunchAtLoginController) {
+    init(frame: NSRect, leadingInset: CGFloat = 16, controller: LaunchAtLoginController,
+         openSettings: @escaping () -> Void = SMAppService.openSystemSettingsLoginItems) {
         self.controller = controller
+        self.openSettings = openSettings
         super.init(frame: frame)
         title.frame = NSRect(x: leadingInset, y: bounds.midY + 3, width: bounds.width - leadingInset - 100, height: 20)
         detail.frame = NSRect(x: leadingInset, y: bounds.midY - 20, width: bounds.width - leadingInset - 100, height: 18)
@@ -79,11 +82,13 @@ final class LaunchAtLoginView: NSView {
     }
 
     @objc private func changed() {
+        let requestedEnable = toggle.state == .on
         changeFailed = false
-        do { try controller.setEnabled(toggle.state == .on) }
+        do { try controller.setEnabled(requestedEnable) }
         catch { changeFailed = true }
         refresh()
+        if requestedEnable && controller.status == .requiresApproval { openSettings() }
     }
 
-    @objc private func openLoginItems() { SMAppService.openSystemSettingsLoginItems() }
+    @objc private func openLoginItems() { openSettings() }
 }

@@ -83,17 +83,20 @@ final class LaunchAtLoginTests: XCTestCase {
     func testControlExplainsApprovalAndShowsFailedChangeWithoutLyingAboutState() throws {
         _ = NSApplication.shared
         let service = FakeLoginItemService()
-        let view = LaunchAtLoginView(frame: NSRect(x: 0, y: 0, width: 592, height: 64), controller: LaunchAtLoginController(service: service))
+        var settingsOpened = 0
+        let view = LaunchAtLoginView(frame: NSRect(x: 0, y: 0, width: 592, height: 64), controller: LaunchAtLoginController(service: service), openSettings: { settingsOpened += 1 })
         let toggle = try XCTUnwrap(view.subviews.compactMap { $0 as? NSSwitch }.first)
         let status = try XCTUnwrap(view.subviews.compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == "Launch at login status" })
         let approval = try XCTUnwrap(view.subviews.compactMap { $0 as? NSButton }.first)
         XCTAssertEqual(service.registrations, 0)
+        XCTAssertEqual(settingsOpened, 0)
         XCTAssertEqual(toggle.state, .off)
         service.failChanges = true
         toggle.state = .on
         toggle.sendAction(toggle.action, to: toggle.target)
         XCTAssertEqual(toggle.state, .off)
         XCTAssertTrue(status.stringValue.contains("Couldn’t change"))
+        XCTAssertEqual(settingsOpened, 0, "A failed change without an approval state must not open settings")
         service.failChanges = false
         service.registrationStatus = .requiresApproval
         toggle.state = .on
@@ -101,15 +104,24 @@ final class LaunchAtLoginTests: XCTestCase {
         XCTAssertFalse(approval.isHidden)
         XCTAssertTrue(status.isHidden)
         XCTAssertTrue(toggle.accessibilityHelp()?.contains("needs approval") == true)
+        XCTAssertEqual(settingsOpened, 1, "An explicit enable request opens Login Items when approval is needed")
         service.failChanges = true
         toggle.state = .off
         toggle.sendAction(toggle.action, to: toggle.target)
         XCTAssertEqual(toggle.state, .on, "Failed cancellation must retain the OS request")
         XCTAssertTrue(approval.title.contains("Couldn’t change"))
+        XCTAssertEqual(settingsOpened, 1, "A disable request must never redirect to approval")
         service.status = .enabled
         view.refresh()
         XCTAssertTrue(approval.isHidden)
         XCTAssertFalse(status.isHidden)
         XCTAssertEqual(toggle.state, .on)
+        service.failChanges = false
+        toggle.state = .off
+        toggle.sendAction(toggle.action, to: toggle.target)
+        service.registrationStatus = .enabled
+        toggle.state = .on
+        toggle.sendAction(toggle.action, to: toggle.target)
+        XCTAssertEqual(settingsOpened, 1, "Approved registration does not open settings")
     }
 }

@@ -40,9 +40,13 @@ Both features are in **Settings → General → Experimental** and are off by de
 
 Images are skipped while supported text and links remain in the group. A selection containing only images has nothing to capture. Unreadable or changed text still cancels safely.
 
+Some browsers expose clickable images and avatars as links. Including one in a mixed selection can cause the highlights to disappear when dragging starts if that link cannot be revalidated. Leave that item out of the group or drag a supported link individually. This is a known Multi-select limitation.
+
 **Drag selected text:** select a passage natively, hold the shortcut, and hover the selection. Click any highlighted line to drag the entire selection. This requires the source app to expose the selection and its visual bounds through Accessibility. An unreadable selection is rejected rather than expanded to a larger paragraph.
 
 Formatting also depends on the attributes the source exposes for that selection. Some browsers expose bold text but omit link destinations; the selected words remain plain text for those links. Drag does not infer a URL from color or underlining.
+
+With Drag selected text enabled, a browser can report a non-text object or control as an unreadable selection, even while the pointer is over ordinary text or empty space. This can prevent highlighting and Multi-select. Turning off **Drag selected text** bypasses this selection check; other capture limitations still apply. This is a known browser selection-state limitation and is not tied to whether an input is open.
 
 ## Clipboard and privacy
 

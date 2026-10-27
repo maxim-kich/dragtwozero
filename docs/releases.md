@@ -1,11 +1,11 @@
 # Releases
 
-Planned repository: https://github.com/maxim-kich/dragtwozero
+Repository: https://github.com/maxim-kich/dragtwozero
 Sole release maintainer: @maxim-kich.
 
 ## Current stage
 
-0.0.4 is being prepared locally as **Drag 2.0 (Alpha)** with the selected-text hint interaction and complete generic list-item capture. Keep the app in alpha until testing confirms it works reliably; moving to beta requires a separate readiness decision. A local DMG design preview and an explicit Developer ID signing/notarization workflow are available. Packaging does not publish a release or replace the installed app. Native acceptance and clean-machine installation checks remain release gates.
+0.0.4 is published as **Drag 2.0 (Alpha)** with the selected-text hint interaction, complete generic list-item capture, optional launch at login and reorganized Settings. Keep the app in alpha until testing confirms it works reliably; moving to beta requires a separate readiness decision. A local DMG design preview and an explicit Developer ID signing/notarization workflow are available. Packaging does not publish a release or replace the installed app. Native acceptance and clean-machine installation checks remain release gates.
 
 ## macOS support policy
 
@@ -25,7 +25,7 @@ Use GitHub Releases as the download source. The website and native updater shoul
 - Versioned link: `https://github.com/maxim-kich/dragtwozero/releases/download/v0.0.4/Drag-2.0-v0.0.4-macOS-arm64.zip`.
 - Always-current landing page: `https://github.com/maxim-kich/dragtwozero/releases/latest`.
 
-The versioned URL above is a future example, not an available download. GitHub's automatic source-code archives are not installable app builds. Do not mark a release latest until its actual Apple Silicon ZIP and signed appcast are uploaded and verified.
+The versioned URL above is the 0.0.4 updater archive. GitHub's automatic source-code archives are not installable app builds. Do not mark a release latest until its actual Apple Silicon ZIP and signed appcast are uploaded and verified.
 
 ### Alpha naming and updates
 
@@ -33,7 +33,7 @@ The versioned URL above is a future example, not an available download. GitHub's
 
 A separate build that follows only prereleases is future work. The current updater ignores GitHub prereleases, so do not use that checkbox for updates intended for current users. Keep tags numeric, such as `v0.0.1`; keep Alpha in the display name and release title.
 
-Use the [0.0.4 release-note draft](release-notes-0.0.4.md) as the starting point, replacing pending validation with actual results before publication.
+See the [0.0.4 release notes](release-notes-0.0.4.md) for verified results and remaining validation. Future releases must name their actual tested scope.
 
 ## Manual release gate (next phase)
 
@@ -81,7 +81,7 @@ Each run writes to a new `dist/notarized-vVERSION.XXXXXX/` directory, preserving
 - Bug reports and proposals: https://github.com/maxim-kich/dragtwozero/issues/new/choose.
 - Security policy: https://github.com/maxim-kich/dragtwozero/security/policy.
 
-These GitHub URLs are planned destinations until the repository is published. Set the description and Website field in the repository's **About** settings. Link to the Releases page until a verified app asset is available; do not advertise the example download URL as live.
+The repository About section uses the description, homepage and topics above. Release assets are hosted in GitHub Releases.
 
 ### Repository configuration
 

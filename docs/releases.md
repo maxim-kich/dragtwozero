@@ -5,7 +5,7 @@ Sole release maintainer: @maxim-kich.
 
 ## Current stage
 
-0.0.2 is being prepared locally as **Drag 2.0 (Alpha)** after fresh-machine testing found regressions in 0.0.1. Keep the app in alpha until testing confirms it works reliably; moving to beta requires a separate readiness decision. A local DMG design preview and an explicit Developer ID signing/notarization workflow are available. Packaging does not publish a release or replace the installed app. Native acceptance and clean-machine installation checks remain release gates.
+0.0.3 is being prepared locally as **Drag 2.0 (Alpha)** after local T3 Code testing found remaining delivery regressions in 0.0.2. Keep the app in alpha until testing confirms it works reliably; moving to beta requires a separate readiness decision. A local DMG design preview and an explicit Developer ID signing/notarization workflow are available. Packaging does not publish a release or replace the installed app. Native acceptance and clean-machine installation checks remain release gates.
 
 ## macOS support policy
 
@@ -17,12 +17,12 @@ The current candidate was tested on macOS 26.4.1. Apple's [current macOS list](h
 
 Use GitHub Releases as the download source. The website and native updater should point to the same release assets, not separately maintained copies.
 
-- Tag: `v0.0.2` (must match VERSION).
-- Release title: `Drag 2.0 (Alpha) 0.0.2`.
-- Updater asset: `Drag-2.0-v0.0.2-macOS-arm64.zip`; an optional `.dmg` may also be offered for manual installation.
+- Tag: `v0.0.3` (must match VERSION).
+- Release title: `Drag 2.0 (Alpha) 0.0.3`.
+- Updater asset: `Drag-2.0-v0.0.3-macOS-arm64.zip`; an optional `.dmg` may also be offered for manual installation.
 - Attach the generated, signed `appcast.xml` to the same release. See [updater setup](updater.md).
 - Attach `SHA256SUMS.txt` and plain-language release notes.
-- Versioned link: `https://github.com/maxim-kich/dragtwozero/releases/download/v0.0.2/Drag-2.0-v0.0.2-macOS-arm64.zip`.
+- Versioned link: `https://github.com/maxim-kich/dragtwozero/releases/download/v0.0.3/Drag-2.0-v0.0.3-macOS-arm64.zip`.
 - Always-current landing page: `https://github.com/maxim-kich/dragtwozero/releases/latest`.
 
 The versioned URL above is a future example, not an available download. GitHub's automatic source-code archives are not installable app builds. Do not mark a release latest until its actual Apple Silicon ZIP and signed appcast are uploaded and verified.
@@ -33,7 +33,7 @@ The versioned URL above is a future example, not an available download. GitHub's
 
 A separate build that follows only prereleases is future work. The current updater ignores GitHub prereleases, so do not use that checkbox for updates intended for current users. Keep tags numeric, such as `v0.0.1`; keep Alpha in the display name and release title.
 
-Use the [0.0.2 release-note draft](release-notes-0.0.2.md) as the starting point, replacing pending validation with actual results before publication.
+Use the [0.0.3 release-note draft](release-notes-0.0.3.md) as the starting point, replacing pending validation with actual results before publication.
 
 ## Manual release gate (next phase)
 

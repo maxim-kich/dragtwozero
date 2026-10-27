@@ -316,10 +316,12 @@ struct InputTarget {
     var googleDocsDocument: AXUIElement? = nil
     var context: CaptureElementContext? = nil
     var selectionValue: String? = nil
+    var selectionMarkers: AXTextMarkerRange? = nil
     func preservingSelection(from authorized: InputTarget) -> InputTarget {
         var copy = self
         copy.insertionRange = authorized.insertionRange
         copy.selectionValue = authorized.selectionValue
+        copy.selectionMarkers = authorized.selectionMarkers
         return copy
     }
     func matchesCurrentTarget(_ current: InputTarget, at point: CGPoint) -> Bool {
@@ -335,6 +337,7 @@ struct InputTarget {
               original.location == fresh.location, original.length == fresh.length,
               let originalValue = selectionValue, let freshValue = current.selectionValue else { return false }
         return originalValue.utf16.elementsEqual(freshValue.utf16)
+            && SelectedTextMarkers.sameRange(selectionMarkers, current.selectionMarkers)
     }
     func highlightFrame(at pointer: CGPoint) -> CGRect {
         googleDocsDocument == nil ? frame : GoogleDocsTarget.highlightFrame(caret: caretFrame, pointer: pointer, viewport: frame)
@@ -463,9 +466,10 @@ struct InputTarget {
             guard frame.contains(point) else { terminalFailure = true; diagnostic("editor-outside-drop-point"); continue }
             switch lookupSelection(node, diagnostic: diagnostic) {
             case .found(let snapshot):
+                let markers = EditorParagraphReceipt.selectedRange(node)
                 return .found(InputTarget(element: node, app: app, frame: frame, dropPoint: point,
                     insertionRange: snapshot.0, caretFrame: .zero,
-                    context: CaptureElementContext(chain: ancestors(node, limit: 40)), selectionValue: snapshot.1))
+                    context: CaptureElementContext(chain: ancestors(node, limit: 40)), selectionValue: snapshot.1, selectionMarkers: markers))
             case .operationallyUnavailable: operationalFailure = true
             case .rejected: terminalFailure = true; diagnostic("editor-selection-rejected")
             }

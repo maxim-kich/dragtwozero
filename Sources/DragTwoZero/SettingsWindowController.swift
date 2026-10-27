@@ -636,12 +636,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
             return
         }
         let controller = NSViewController()
-        controller.view = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 280))
-        let demo = MultiselectDemoView(frame: NSRect(x: 16, y: 72, width: 288, height: 192), mode: mode)
+        let explanationHeight: CGFloat = mode == .selectedText ? 112 : 48
+        controller.view = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 232 + explanationHeight))
+        let demo = MultiselectDemoView(frame: NSRect(x: 16, y: 24 + explanationHeight, width: 288, height: 192), mode: mode)
         controller.view.addSubview(demo)
         let explanation = NSTextField(wrappingLabelWithString: sender.toolTip ?? "")
         explanation.font = .systemFont(ofSize: 13)
-        explanation.frame = NSRect(x: 16, y: 12, width: 288, height: 48)
+        explanation.frame = NSRect(x: 16, y: 12, width: 288, height: explanationHeight)
         controller.view.addSubview(explanation)
         popover.contentViewController = controller
         popover.behavior = .transient

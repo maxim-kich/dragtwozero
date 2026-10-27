@@ -112,7 +112,9 @@ final class BrowserSelectionIntegrationTests: XCTestCase {
         let raw = try XCTUnwrap(readAttributed("AXAttributedStringForTextMarkerRangeWithOptions", options)
             ?? readAttributed("AXAttributedStringForTextMarkerRange", selected))
         let plain = "Select this passage with emoji 🐈 and wrapped text across several line"
-        XCTAssertEqual(raw.string, plain)
+        guard raw.string == plain else {
+            return XCTFail("Synthetic fixture selection changed before formatting inspection")
+        }
         let passage = (plain as NSString).range(of: "passage")
         let attributes = raw.attributes(at: passage.location, effectiveRange: nil)
         let font = attributes[NSAttributedString.Key(kAXFontTextAttribute.takeUnretainedValue() as String)] as? [String: Any]

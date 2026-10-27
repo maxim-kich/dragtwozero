@@ -51,7 +51,7 @@ final class MultiselectDemoView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        let time = reduced ? 2.2 : (Date.timeIntervalSinceReferenceDate - started).truncatingRemainder(dividingBy: 5.2)
+        let time = reduced ? 2.2 : (Date.timeIntervalSinceReferenceDate - started).truncatingRemainder(dividingBy: mode == .selectedText ? 6.8 : 5.2)
         func smooth(_ value: Double) -> CGFloat {
             let t = min(1, max(0, value))
             return CGFloat(t * t * (3 - 2 * t))
@@ -130,35 +130,57 @@ final class MultiselectDemoView: NSView {
             NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
         }
         let selection = smooth((time - 0.2) / 0.8)
-        let hover = smooth((time - 1.2) / 0.5)
-        let drag = smooth((time - 2.8) / 1.1)
-        let fade = 1 - smooth((time - 4.5) / 0.5)
-        let lines = [NSRect(x: 34, y: 48, width: 218, height: 5), NSRect(x: 34, y: 78, width: 218, height: 5), NSRect(x: 34, y: 108, width: 142, height: 5)]
+        let hintOpacity = smooth((time - 1.3) / 0.35)
+        let drag = smooth((time - 2.8) / 1.5)
+        let dropped = smooth((time - 4.5) / 0.25)
+        let fade = 1 - smooth((time - 6.2) / 0.4)
+        let lines = [NSRect(x: 34, y: 48, width: 218, height: 5), NSRect(x: 34, y: 78, width: 218, height: 5), NSRect(x: 34, y: 98, width: 142, height: 5)]
         for line in lines { rounded(line, color: .tertiaryLabelColor.withAlphaComponent(0.5), radius: 2) }
         let selected = [NSRect(x: 106, y: 40, width: 146, height: 21), NSRect(x: 34, y: 70, width: 136, height: 21)]
         for (index, rect) in selected.enumerated() {
             let progress = min(1, max(0, selection * 2 - CGFloat(index)))
             if progress <= 0 { continue }
-            let moving = NSRect(x: rect.minX, y: rect.minY, width: rect.width * progress, height: rect.height)
-            rounded(moving, color: .selectedTextBackgroundColor.withAlphaComponent(0.4 * fade))
-            rounded(NSRect(x: moving.minX, y: moving.minY + 8, width: moving.width, height: 5), color: .labelColor.withAlphaComponent(0.6 * fade), radius: 2)
+            let selectedRect = NSRect(x: rect.minX, y: rect.minY, width: rect.width * progress, height: rect.height)
+            rounded(selectedRect, color: .selectedTextBackgroundColor.withAlphaComponent(0.4 * fade))
+            rounded(NSRect(x: selectedRect.minX, y: selectedRect.minY + 8, width: selectedRect.width, height: 5), color: .labelColor.withAlphaComponent(0.6 * fade), radius: 2)
         }
-        let hint = NSRect(x: 104 + drag * 32, y: 36 + drag * 70, width: 132, height: 29)
-        if hover > 0 {
-            rounded(hint, color: .controlBackgroundColor.withAlphaComponent(hover * fade), radius: 9)
-            let title = NSAttributedString(string: "Selected text", attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.labelColor.withAlphaComponent(hover * fade)])
+        // The source selection stays in place; only the grabbed hint moves.
+        let target = NSRect(x: 26, y: 119, width: 236, height: 35)
+        rounded(target, color: .controlBackgroundColor, radius: 7)
+        let targetOutline = NSBezierPath(roundedRect: target, xRadius: 7, yRadius: 7)
+        NSColor.separatorColor.setStroke()
+        targetOutline.stroke()
+        let targetTitle = NSAttributedString(string: dropped > 0 ? "Selected text" : "Drop into an input", attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: dropped > 0 ? NSColor.labelColor : NSColor.placeholderTextColor])
+        targetTitle.draw(at: NSPoint(x: target.minX + 10, y: target.minY + 10))
+        let opacity = hintOpacity * (1 - dropped) * fade
+        let hint = NSRect(x: 104 - drag * 26, y: 36 + drag * 85, width: 132, height: 29)
+        if opacity > 0 {
+            rounded(hint, color: .controlBackgroundColor.withAlphaComponent(opacity), radius: 9)
+            let outline = NSBezierPath(roundedRect: hint, xRadius: 9, yRadius: 9)
+            NSColor.controlAccentColor.withAlphaComponent(0.8 * opacity).setStroke()
+            outline.lineWidth = 1.5
+            outline.stroke()
+            let title = NSAttributedString(string: "Selected text", attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.labelColor.withAlphaComponent(opacity)])
             title.draw(at: NSPoint(x: hint.minX + 12, y: hint.minY + 6))
         }
-        let cursor = NSRect(x: 170 + drag * 32, y: 51 + drag * 70, width: 22, height: 22)
+        let cursor = NSRect(x: hint.midX, y: hint.midY, width: 22, height: 22)
         NSGraphicsContext.saveGraphicsState()
         let shadow = NSShadow()
         shadow.shadowColor = NSColor.black.withAlphaComponent(0.65)
         shadow.shadowBlurRadius = 2
         shadow.shadowOffset = NSSize(width: 0, height: -1)
         shadow.set()
-        Self.lightCursor.draw(in: cursor, from: .zero, operation: .sourceOver, fraction: hover * fade, respectFlipped: true, hints: nil)
+        Self.lightCursor.draw(in: cursor, from: .zero, operation: .sourceOver, fraction: hintOpacity * fade, respectFlipped: true, hints: nil)
         NSGraphicsContext.restoreGraphicsState()
-        let caption = time < 1.2 ? "Select text first" : (time < 2.8 ? "Hold shortcut to show the hint" : "Grab the hint, then release shortcut")
+        let shortcutHeld = time >= 1.3 && time < 3.2
+        let keyState = NSAttributedString(string: shortcutHeld ? "Shortcut held" : "Shortcut released", attributes: [.font: NSFont.systemFont(ofSize: 10, weight: .medium), .foregroundColor: shortcutHeld ? NSColor.controlAccentColor : NSColor.secondaryLabelColor])
+        keyState.draw(at: NSPoint(x: 14, y: 12))
+        let caption: String
+        if time < 1.3 { caption = "Select text first" }
+        else if time < 2.5 { caption = "Hold shortcut: hint under pointer" }
+        else if time < 3.2 { caption = "Grab the hint and start dragging" }
+        else if time < 4.5 { caption = "Keep dragging; shortcut can be released" }
+        else { caption = "Release the mouse to drop" }
         let text = NSAttributedString(string: caption, attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: NSColor.secondaryLabelColor])
         text.draw(at: NSPoint(x: (bounds.width - text.size().width) / 2, y: 169))
     }

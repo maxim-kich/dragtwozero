@@ -28,7 +28,9 @@ enum WindowHitPolicy {
             // Its exact reserved public layer identifies this noninteractive
             // surface; no broad system/recording/floating layer exemption.
             if window.layer == cursorLayer { continue }
-            if window.layer == Int(CGWindowLevelForKey(.mainMenuWindow)),
+            // Both Screenshot and its selected-portion helper need exact IDs
+            // authorized together by the recording policy, never a layer exemption.
+            if [Int(CGWindowLevelForKey(.mainMenuWindow)), ScreenCaptureOverlayPolicy.Owner.recordingHelper.layer].contains(window.layer),
                let id = window.windowID, passiveScreenCaptureWindows.contains(id) { continue }
             if [20, 21].contains(window.layer), let id = window.windowID,
                passiveSystemWindows.contains(id) { continue }

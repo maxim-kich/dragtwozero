@@ -27,24 +27,83 @@ final class ScreenCaptureOverlayTests: XCTestCase {
     }
 
     func testPassiveVerifiedOwnerNeedsMatchingSystemHitAndNoCaptureControls() {
-        func allowed(trusted: Bool = true, active: Bool = false, count: Int? = 0, hit: pid_t? = 30) -> Bool {
+        func allowed(trusted: Bool = true, active: Bool = false, hidden: Bool = true, hit: pid_t? = 30) -> Bool {
             ScreenCaptureOverlayPolicy.allowsPassThrough(trustedOwner: trusted, ownerActive: active,
-                accessibleWindowCount: count, underlyingPID: 30, globalHitPID: hit, ownPID: 10, ownOverlayAtPoint: false)
+                captureControlsHidden: hidden, underlyingPID: 30, globalHitPID: hit, ownPID: 10, ownOverlayAtPoint: false)
         }
         XCTAssertTrue(allowed())
         XCTAssertFalse(allowed(trusted: false), "An owner name is not identity proof")
         XCTAssertFalse(allowed(active: true))
-        XCTAssertFalse(allowed(count: 1), "Visible Screenshot controls must block")
-        XCTAssertFalse(allowed(count: nil), "An unavailable AX read must fail closed")
+        XCTAssertFalse(allowed(hidden: false), "Visible or unverified Screenshot controls must block")
         XCTAssertFalse(allowed(hit: nil))
         XCTAssertFalse(allowed(hit: 20), "Screenshot receiving the hit must block")
         XCTAssertFalse(allowed(hit: 40), "A different app receiving the hit must block")
     }
 
+    func testRetainedHiddenRecordingToolbarDoesNotBlockTheUnderlyingSource() {
+        // Native macOS recording retained this AX window, but its only on-screen
+        // Screenshot window was the full-display layer-24 surface.
+        let toolbar = CGRect(x: 735, y: 840, width: 800, height: 50)
+        var probes: [CGPoint] = []
+        XCTAssertTrue(ScreenCaptureOverlayPolicy.controlsAreHidden(accessibleWindowFrames: [toolbar],
+            windows: [overlay, editor], overlayIDs: [100], displays: [display], ownPID: 10,
+            nativeDragActive: false, systemHitPID: { probes.append($0); return 30 }))
+        XCTAssertEqual(probes, [CGPoint(x: 1102.5, y: 865)], "Probe the visible part, not an off-display center")
+    }
+
+    func testVisibleToolbarStillBlocksWhenPaintedInsideTheFullDisplaySurface() {
+        let toolbar = CGRect(x: 735, y: 840, width: 800, height: 50)
+        for hit: pid_t? in [20, 40, 10, 0, nil] {
+            XCTAssertFalse(ScreenCaptureOverlayPolicy.controlsAreHidden(accessibleWindowFrames: [toolbar],
+                windows: [overlay, editor], overlayIDs: [100], displays: [display], ownPID: 10,
+                nativeDragActive: false, systemHitPID: { _ in hit }),
+                "A retained control must freshly hit the same underlying app, including when Drag's hint is present")
+        }
+    }
+
+    func testSeparateVisibleToolbarAndForeignDialogsAreNeverSkipped() {
+        let frame = CGRect(x: 735, y: 840, width: 735, height: 50)
+        for blocker in [candidate(frame: frame, id: 101), HitTestWindow(pid: 40, layer: 3, frame: frame)] {
+            XCTAssertFalse(ScreenCaptureOverlayPolicy.controlsAreHidden(accessibleWindowFrames: [frame],
+                windows: [blocker, overlay, editor], overlayIDs: [100], displays: [display], ownPID: 10,
+                nativeDragActive: false, systemHitPID: { _ in XCTFail("An occluded window must not be probed"); return 30 }))
+        }
+    }
+
+    func testEveryRetainedWindowNeedsFreshEvidence() {
+        let frames = [CGRect(x: 100, y: 100, width: 200, height: 50), CGRect(x: 500, y: 500, width: 200, height: 50)]
+        XCTAssertFalse(ScreenCaptureOverlayPolicy.controlsAreHidden(accessibleWindowFrames: frames,
+            windows: [overlay, editor], overlayIDs: [100], displays: [display], ownPID: 10,
+            nativeDragActive: false, systemHitPID: { $0.x < 400 ? 30 : 20 }))
+    }
+
+    func testUnavailableOffDisplayAndUnboundedControlEvidenceFailsClosed() {
+        let invalid: [[CGRect]?] = [nil, [.null], [.infinite], [.zero],
+            [CGRect(x: 2000, y: 100, width: 200, height: 50)],
+            Array(repeating: CGRect(x: 100, y: 100, width: 200, height: 50), count: 9)]
+        for frames in invalid {
+            XCTAssertFalse(ScreenCaptureOverlayPolicy.controlsAreHidden(accessibleWindowFrames: frames,
+                windows: [overlay, editor], overlayIDs: [100], displays: [display], ownPID: 10,
+                nativeDragActive: false, systemHitPID: { _ in XCTFail("Unknown control geometry must not be probed"); return 30 }))
+        }
+        XCTAssertTrue(ScreenCaptureOverlayPolicy.controlsAreHidden(accessibleWindowFrames: [],
+            windows: [overlay, editor], overlayIDs: [100], displays: [display], ownPID: 10,
+            nativeDragActive: false, systemHitPID: { _ in XCTFail("No retained controls need no extra hits"); return nil }))
+    }
+
+    func testHiddenToolbarOnASecondaryDisplayUsesThatDisplaysUnderlyingWindow() {
+        let other = display.offsetBy(dx: -1470, dy: -956)
+        let toolbar = CGRect(x: other.minX + 735, y: other.minY + 840, width: 800, height: 50)
+        let recording = candidate(frame: other), source = HitTestWindow(pid: 30, layer: 0, frame: other)
+        XCTAssertTrue(ScreenCaptureOverlayPolicy.controlsAreHidden(accessibleWindowFrames: [toolbar],
+            windows: [recording, source], overlayIDs: [100], displays: [display, other], ownPID: 10,
+            nativeDragActive: false, systemHitPID: { point in XCTAssertTrue(other.contains(point)); return 30 }))
+    }
+
     func testOwnNoninteractiveHintMayReceiveSystemHitOnlyWhenPresentAtPoint() {
         for present in [false, true] {
             XCTAssertEqual(ScreenCaptureOverlayPolicy.allowsPassThrough(trustedOwner: true, ownerActive: false,
-                accessibleWindowCount: 0, underlyingPID: 30, globalHitPID: 10, ownPID: 10, ownOverlayAtPoint: present), present)
+                captureControlsHidden: true, underlyingPID: 30, globalHitPID: 10, ownPID: 10, ownOverlayAtPoint: present), present)
         }
     }
 

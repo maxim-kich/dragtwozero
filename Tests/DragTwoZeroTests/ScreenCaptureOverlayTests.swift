@@ -40,6 +40,75 @@ final class ScreenCaptureOverlayTests: XCTestCase {
         XCTAssertFalse(allowed(hit: 40), "A different app receiving the hit must block")
     }
 
+    private var recordingHelper: HitTestWindow {
+        HitTestWindow(pid: 21, layer: 1499, frame: display, windowID: 101)
+    }
+
+    func testNativeRecordingHelperNeedsItsExactExecutableIdentity() {
+        let owner = ScreenCaptureOverlayPolicy.Owner.recordingHelper
+        XCTAssertTrue(owner.matches(bundleIdentifier: nil, bundlePath: "/usr/sbin/screencapture",
+                                    executablePath: "/usr/sbin/screencapture"))
+        XCTAssertFalse(owner.matches(bundleIdentifier: nil, bundlePath: "/tmp/screencapture",
+                                     executablePath: "/tmp/screencapture"))
+        XCTAssertFalse(owner.matches(bundleIdentifier: "com.apple.screencapture", bundlePath: "/usr/sbin/screencapture",
+                                     executablePath: "/tmp/screencapture"))
+        XCTAssertFalse(owner.matches(bundleIdentifier: "another.app", bundlePath: "/usr/sbin/screencapture",
+                                     executablePath: "/usr/sbin/screencapture"))
+        XCTAssertFalse(owner.matches(bundleIdentifier: nil, bundlePath: nil, executablePath: "/usr/sbin/screencapture"))
+    }
+
+    func testHelperSurfaceNeedsItsOwnLayerAndFullDisplayGeometry() {
+        XCTAssertTrue(ScreenCaptureOverlayPolicy.isFullDisplayOverlay(recordingHelper, displays: [display], owner: .recordingHelper))
+        XCTAssertFalse(ScreenCaptureOverlayPolicy.isFullDisplayOverlay(overlay, displays: [display], owner: .recordingHelper))
+        XCTAssertFalse(ScreenCaptureOverlayPolicy.isFullDisplayOverlay(candidate(layer: 1499,
+            frame: CGRect(x: 0, y: 0, width: 100, height: 100)), displays: [display], owner: .recordingHelper))
+    }
+
+    func testNativeRecordingSurfacesNeedVerifiedScreenshotAndHelperOwners() {
+        let stack = [recordingHelper, overlay, editor]
+        XCTAssertEqual(ScreenCaptureOverlayPolicy.surfaceIDs(in: stack, at: point,
+            verifiedOwners: [20: .screenshot, 21: .recordingHelper], displays: [display]), [100, 101])
+        XCTAssertEqual(ScreenCaptureOverlayPolicy.surfaceIDs(in: stack, at: point,
+            verifiedOwners: [21: .recordingHelper], displays: [display]), [], "A standalone recorder remains blocked")
+        XCTAssertEqual(ScreenCaptureOverlayPolicy.surfaceIDs(in: [recordingHelper, editor], at: point,
+            verifiedOwners: [20: .screenshot, 21: .recordingHelper], displays: [display]), [], "A trusted process is not a matching Screenshot surface")
+        XCTAssertEqual(ScreenCaptureOverlayPolicy.surfaceIDs(in: stack, at: point,
+            verifiedOwners: [20: .screenshot], displays: [display]), [100], "An unverified helper is not exempted")
+        XCTAssertEqual(ScreenCaptureOverlayPolicy.surfaceIDs(in: stack, at: point,
+            verifiedOwners: [20: .recordingHelper, 21: .screenshot], displays: [display]), [], "Owner and layer must agree")
+    }
+
+    func testSelectedPortionHiddenControlsNeedEvidenceThroughBothRecordingSurfaces() {
+        let toolbar = CGRect(x: 735, y: 840, width: 800, height: 50)
+        let stack = [recordingHelper, overlay, editor]
+        for ids: Set<CGWindowID> in [[100], [101], []] {
+            XCTAssertFalse(ScreenCaptureOverlayPolicy.controlsAreHidden(accessibleWindowFrames: [toolbar],
+                windows: stack, overlayIDs: ids, displays: [display], ownPID: 10,
+                nativeDragActive: false, systemHitPID: { _ in 30 }))
+        }
+        for hit: pid_t? in [20, 21, 40, nil] {
+            XCTAssertFalse(ScreenCaptureOverlayPolicy.controlsAreHidden(accessibleWindowFrames: [toolbar],
+                windows: stack, overlayIDs: [100, 101], displays: [display], ownPID: 10,
+                nativeDragActive: false, systemHitPID: { _ in hit }))
+        }
+        XCTAssertTrue(ScreenCaptureOverlayPolicy.controlsAreHidden(accessibleWindowFrames: [toolbar],
+            windows: stack, overlayIDs: [100, 101], displays: [display], ownPID: 10,
+            nativeDragActive: false, systemHitPID: { _ in 30 }))
+    }
+
+    func testHelperNeverExemptsOtherWindowsOrVisibleControls() {
+        XCTAssertEqual(WindowHitPolicy.resolve([recordingHelper, overlay, editor], at: point, ownPID: 10), .blocked)
+        XCTAssertEqual(WindowHitPolicy.resolve([recordingHelper, overlay, editor], at: point, ownPID: 10,
+            passiveScreenCaptureWindows: [100, 101]), .application(30))
+        var foreign = recordingHelper
+        foreign.windowID = 102
+        XCTAssertEqual(WindowHitPolicy.resolve([foreign, recordingHelper, overlay, editor], at: point, ownPID: 10,
+            passiveScreenCaptureWindows: [100, 101]), .blocked)
+        let toolbar = candidate(frame: CGRect(x: 400, y: 350, width: 300, height: 100), id: 103)
+        XCTAssertEqual(WindowHitPolicy.resolve([toolbar, recordingHelper, overlay, editor], at: point, ownPID: 10,
+            passiveScreenCaptureWindows: [100, 101]), .blocked)
+    }
+
     func testRetainedHiddenRecordingToolbarDoesNotBlockTheUnderlyingSource() {
         // Native macOS recording retained this AX window, but its only on-screen
         // Screenshot window was the full-display layer-24 surface.
@@ -126,7 +195,7 @@ final class ScreenCaptureOverlayTests: XCTestCase {
     }
 
     func testWrongLayerCannotBeExemptedEvenWithMatchingWindowID() {
-        let window = candidate(layer: 1499)
+        let window = candidate(layer: 25)
         XCTAssertEqual(WindowHitPolicy.resolve([window, editor], at: point, ownPID: 10,
             passiveScreenCaptureWindows: [100]), .blocked)
     }
